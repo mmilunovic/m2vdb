@@ -172,3 +172,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# During development, don't push notebooks
+*.ipynb
+
+# Benchmarks
+benchmarks/data/
