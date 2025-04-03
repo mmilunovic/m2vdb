@@ -22,21 +22,20 @@ This project started during an internal Microsoft hackathon. I wanted to learn h
 - Mild psychological unraveling
 
 
----
+## 🔬 Benchmark Results
 
-## 🔬 Benchmark Results (SIFT1M, 128D vectors)
+**Dataset:** SIFT1M  
+**Database vectors:** 10,000  
+**Query vectors:** 1,000  
+**Dimensions:** 128  
 
-| Metric                 | `m2vdb` (BruteForce) | `FAISS` (Flat) | Notes |
-|------------------------|----------------------|--------------|-------|
-| **Recall@10**          | TBD                  | TBD          | Higher is better (1.0 = perfect) |
-| **Avg Query Latency**  | TBD                  | TBD          | ms per query (lower is better) |
-| **Throughput**         | TBD                  | TBD          | Queries/sec (higher = faster) |
-| **Build Time**         | TBD                  | TBD          | Time to prepare index (if needed) |
-| **Memory Usage**       | TBD                  | TBD          | Peak memory during search (MB) |
-| **Disk Footprint**     | TBD                  | TBD          | Size of stored index, if saved |
-| **Query Variance**     | TBD                  | TBD          | Std dev of query times (consistency) |
-| **Embarassment Factor™** | 😬 TBD              | 😎 TBD        | Will this run on a friend’s laptop without excuses? |
+| Method         | 🛠️ Build Time | ⚡ Search Time | 🎯 Recall@10 | 🚀 Throughput (q/s) | 📉 Variance (ms) | 🔍 vs FAISS        | 😬 Embarassment Factor™       |
+|----------------|----------------|----------------|--------------|---------------------|------------------|---------------------|-------------------------------|
+| **FAISS**      | 460.42µs        | 7.14ms         | 0.0197       | —                   | —                | —                   | 😎 *"Just works."*            |
+| **m2vdb (BF)** | 458.54µs        | 1422.42ms      | 0.0197       | 703.0               | 0.09             | 🔺 +19808.4%        | 😬 *"Please don’t look."*     |
+| **m2vdb (ANN)**| 359.75µs        | 575.61ms       | 0.0019       | 1737.3              | 0.04             | 🔺 +7956.3%         | 😐 *"Kind of works?"*         |
 
+> **😬 Embarassment Factor™** — a completely subjective metric for how ashamed you should feel demoing this to another human.
 
 ## Install
 
@@ -49,19 +48,25 @@ pip install -r requirements.txt
 ## Example usage
 
 ```python
-from m2vdb import VectorDatabase
+from m2vdb.database import V3cT0rDaTaBas3
+import numpy as np
 
-db = VectorDatabase(dim=128, index_type="brute")
+# Create a new vector database with brute force index
+db = V3cT0rDaTaBas3(dim=128, index_type="brute_force", storage_path="my_vector_db")
 
-# Add data
-db.add(vectors=[[...], [...]], metadata_list=[{...}, {...}])
+# Add vectors with metadata
+vectors = np.random.random((100, 128)).astype('float32')
+metadata = [{"id": i, "doc": f"document_{i}", "category": f"cat_{i % 5}"} for i in range(100)]
+db.add(vectors=vectors, metadata_list=metadata)
 
-# Search
-results = db.search(queries=[[...]], k=5)
+# Search for similar vectors
+query = np.random.random((1, 128)).astype('float32')
+results = db.search(queries=query, k=5)
+print(f"Top match: {results[0][0]}")
 
-# Save & reload
+# Save the database
 db.save()
-db2 = VectorDatabase(dim=128, index_type="brute")
-db2.load()
 
+# Later, load the existing database
+loaded_db = V3cT0rDaTaBas3(storage_path="my_vector_db", load_existing=True)
 ```
