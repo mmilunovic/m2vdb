@@ -2,7 +2,7 @@
 
 import numpy as np
 import faiss
-from m2vdb.index import BruteForceIndex
+from m2vdb.index import BruteForceIndex, ANNIndex
 from time import perf_counter
 from benchmarks.datasets import load_sift1m
 from benchmarks.metrics import recall_at_k
@@ -15,65 +15,80 @@ def format_time(seconds):
     return f"{ms:.2f}ms"
 
 def run_benchmark():
-    # Print benchmark configuration
-    print("=" * 60)
     print("VECTOR SIMILARITY SEARCH BENCHMARK")
-    print("=" * 60)
-    print("Dataset: SIFT1M (128-dimensional, L2 distance)")
+    print("\nDataset: SIFT1M")
     
     # Load dataset
-    print("\nLoading dataset...")
     xb, xq, gt = load_sift1m()
-    print(f"Database size: {len(xb)} vectors")
-    print(f"Query size:    {len(xq)} queries")
-    print(f"Dimensions:    {xb.shape[1]}")
+    print(f"Database vectors: {len(xb):,}")
+    print(f"Query vectors:    {len(xq):,}")
+    print(f"Dimensions:       {xb.shape[1]}")
+    
     print("\nIndexes:")
-    print("-" * 60)
-    print("1. FAISS:  IndexFlatL2 (exact search, brute force)")
-    print("2. m2vdb:  BruteForceIndex (exact search)")
-    print("-" * 60)
+    print("FAISS:  IndexFlatL2 (exact search, brute force)")
+    print("m2vdb:  BruteForceIndex (exact search)")
+    print("m2vdb:  ANNIndex (approximate search, random sampling)")
 
     # FAISS baseline
+    print("\nBuilding FAISS index...")
     faiss_index = faiss.IndexFlatL2(128)
     start = perf_counter()
     faiss_index.add(xb)
     faiss_build_time = perf_counter() - start
     
+    print("Running FAISS search...")
     start = perf_counter()
     _, faiss_results = faiss_index.search(xq, 10)
     faiss_search_time = perf_counter() - start
     faiss_recall = recall_at_k(faiss_results, gt, k=10)
 
     # m2vdb brute-force
+    print("\nBuilding m2vdb brute-force index...")
     bf = BruteForceIndex(dim=128)
     start = perf_counter()
     bf.add(xb)
-    m2v_build_time = perf_counter() - start
+    m2v_bf_build_time = perf_counter() - start
     
+    print("Running m2vdb brute-force search...")
     start = perf_counter()
-    m2v_results = bf.search(xq, k=10)
-    m2v_search_time = perf_counter() - start
-    m2v_recall = recall_at_k(m2v_results, gt, k=10)
+    m2v_bf_results = bf.search(xq, k=10)
+    m2v_bf_search_time = perf_counter() - start
+    m2v_bf_recall = recall_at_k(m2v_bf_results, gt, k=10)
+
+    # m2vdb ANN
+    print("\nBuilding m2vdb ANN index...")
+    ann = ANNIndex(dim=128, num_candidates=1000)  # Sample 1000 candidates per query
+    start = perf_counter()
+    ann.add(xb)
+    m2v_ann_build_time = perf_counter() - start
+    
+    print("Running m2vdb ANN search...")
+    start = perf_counter()
+    m2v_ann_results = ann.search(xq, k=10)
+    m2v_ann_search_time = perf_counter() - start
+    m2v_ann_recall = recall_at_k(m2v_ann_results, gt, k=10)
 
     # Calculate relative performance
-    search_slowdown = (m2v_search_time / faiss_search_time - 1) * 100
-    build_slowdown = (m2v_build_time / faiss_build_time - 1) * 100
+    bf_search_slowdown = (m2v_bf_search_time / faiss_search_time - 1) * 100
+    bf_build_slowdown = (m2v_bf_build_time / faiss_build_time - 1) * 100
+    ann_search_slowdown = (m2v_ann_search_time / faiss_search_time - 1) * 100
+    ann_build_slowdown = (m2v_ann_build_time / faiss_build_time - 1) * 100
 
-    # Print results
+    # Print results table
     print("\nResults:")
-    print("=" * 80)
-    print(f"{'Method':<10} {'Build Time':<15} {'Search Time':<15} {'Recall@10':<10} {'vs FAISS'}")
-    print("-" * 80)
-    print(f"{'FAISS':<10} {format_time(faiss_build_time):<15} {format_time(faiss_search_time):<15} {faiss_recall:.4f}")
-    print(f"{'m2vdb':<10} {format_time(m2v_build_time):<15} {format_time(m2v_search_time):<15} {m2v_recall:.4f}    {search_slowdown:+.1f}%")
-    print("=" * 80)
+    print(f"{'Method':<15} {'Build':<12} {'Search':<12} {'Recall@10':<10} {'vs FAISS'}")
+    print(f"{'FAISS':<15} {format_time(faiss_build_time):<12} {format_time(faiss_search_time):<12} {faiss_recall:.4f}")
+    print(f"{'m2vdb (BF)':<15} {format_time(m2v_bf_build_time):<12} {format_time(m2v_bf_search_time):<12} {m2v_bf_recall:.4f}    {bf_search_slowdown:+.1f}%")
+    print(f"{'m2vdb (ANN)':<15} {format_time(m2v_ann_build_time):<12} {format_time(m2v_ann_search_time):<12} {m2v_ann_recall:.4f}    {ann_search_slowdown:+.1f}%")
     
     # Print performance summary
     print("\nPerformance Summary:")
-    print("-" * 60)
-    print(f"Index Build: m2vdb is {build_slowdown:+.1f}% vs FAISS")
-    print(f"Search Time: m2vdb is {search_slowdown:+.1f}% vs FAISS")
-    print("-" * 60)
+    print(f"Index Build:")
+    print(f"  m2vdb (BF):  {bf_build_slowdown:+.1f}% vs FAISS")
+    print(f"  m2vdb (ANN): {ann_build_slowdown:+.1f}% vs FAISS")
+    print(f"Search Time:")
+    print(f"  m2vdb (BF):  {bf_search_slowdown:+.1f}% vs FAISS")
+    print(f"  m2vdb (ANN): {ann_search_slowdown:+.1f}% vs FAISS")
 
 if __name__ == "__main__":
     run_benchmark()
