@@ -25,16 +25,17 @@ This project started during an internal Microsoft hackathon. I wanted to learn h
 ## 🔬 Benchmark Results
 
 **Dataset:** SIFT1M  
-**Database vectors:** 10,000  
+**Database vectors:** 100,000  
 **Query vectors:** 1,000  
 **Dimensions:** 128  
 
+<!-- BENCHMARK_START -->
 | Method         | 🛠️ Build Time | ⚡ Search Time | 🎯 Recall@10 | 🚀 Throughput (q/s) | 📉 Variance (ms) | 🔍 vs FAISS        | 😬 Embarassment Factor™       |
 |----------------|----------------|----------------|--------------|---------------------|------------------|---------------------|-------------------------------|
-| **FAISS**      | 460.42µs        | 7.14ms         | 0.0197       | —                   | —                | —                   | 😎 *"Just works."*            |
-| **m2vdb (BF)** | 458.54µs        | 1422.42ms      | 0.0197       | 703.0               | 0.09             | 🔺 +19808.4%        | 😬 *"Please don’t look."*     |
-| **m2vdb (ANN)**| 359.75µs        | 575.61ms       | 0.0019       | 1737.3              | 0.04             | 🔺 +7956.3%         | 😐 *"Kind of works?"*         |
-
+| **FAISS**      | 4.55ms         | 39.10ms         | 0.1639         | —                     | —                  | —                     | 😎 *"Just works."*               |
+| **m2vdb (BF)** | 3.98ms         | 18668.73ms      | 0.1639         | 53.6                  | 1.21               | 🔺 +47647.7%           | 😬 *"Please don't look."*        |
+| **m2vdb (ANN)** | 3.63ms         | 2770.36ms       | 0.0017         | 361.0                 | 0.23               | 🔺 +6985.5%            | 😐 *"Kind of works?"*            |
+<!-- BENCHMARK_END -->
 > **😬 Embarassment Factor™** — a completely subjective metric for how ashamed you should feel demoing this to another human.
 
 ## Install

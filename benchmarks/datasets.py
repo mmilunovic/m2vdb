@@ -56,7 +56,7 @@ def load_sift1m():
         download_sift1m(data_dir)
     
     # Load the dataset
-    xb = read_fvecs(data_dir / "sift_base.fvecs")[:10000]
+    xb = read_fvecs(data_dir / "sift_base.fvecs")[:100000]
     xq = read_fvecs(data_dir / "sift_query.fvecs")[:1000]
     gt = read_ivecs(data_dir / "sift_groundtruth.ivecs")
     return xb, xq, gt
