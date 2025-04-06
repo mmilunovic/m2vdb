@@ -27,7 +27,7 @@ class BaseIndex(ABC):
         pass
 
     @abstractmethod
-    def search(self, queries: np.ndarray, k: int = 10) -> List[List[int]]:
+    def search(self, queries: np.ndarray, k: int = 10) -> np.ndarray:
         """Search for k nearest neighbors"""
         pass
 
@@ -49,22 +49,66 @@ class BruteForceIndex(BaseIndex):
             unexpected = ', '.join(kwargs.keys())
             raise ValueError(f"Unexpected parameters for BruteForceIndex: {unexpected}")
             
-        self.vectors = []
+        # Store vectors directly in a numpy array for efficient computation
+        self._vectors_array = np.zeros((0, dim), dtype=np.float32)
         self.ids = []
 
     def add(self, vecs: np.ndarray, ids: Optional[List[int]] = None) -> None:
-        vecs = np.array(vecs)
+        """
+        Add vectors to the index
+        
+        Args:
+            vecs: Vectors to add (n x dim)
+            ids: Optional list of IDs for the vectors
+        """
+        vecs = np.asarray(vecs, dtype=np.float32)
+        if vecs.ndim != 2 or vecs.shape[1] != self.dim:
+            raise ValueError(f"Expected vectors of shape (n, {self.dim}), got {vecs.shape}")
+            
         if ids is None:
-            ids = list(range(len(self.vectors), len(self.vectors) + len(vecs)))
-        self.vectors.append(vecs)
+            ids = list(range(len(self.ids), len(self.ids) + len(vecs)))
+            
+        # Pre-allocate new array and copy data
+        new_size = len(self.ids) + len(vecs)
+        new_array = np.empty((new_size, self.dim), dtype=np.float32)
+        if len(self.ids) > 0:
+            new_array[:len(self.ids)] = self._vectors_array
+        new_array[len(self.ids):] = vecs
+        
+        # Update storage
+        self._vectors_array = new_array
         self.ids.extend(ids)
 
-    def search(self, queries: np.ndarray, k: int = 10) -> List[List[int]]:
-        queries = np.array(queries)
-        all_vectors = np.vstack(self.vectors)
-        dists = self._metric_fn(queries, all_vectors)
-        idx = np.argsort(dists, axis=1)[:, :k]
-        return [[self.ids[i] for i in row] for row in idx]
+    def search(self, queries: np.ndarray, k: int = 10) -> np.ndarray:
+        """
+        Search for k nearest neighbors
+        
+        Args:
+            queries: Query vectors (n x dim)
+            k: Number of nearest neighbors to return
+        Returns:
+            Array of indices to nearest neighbors (n x k)
+        """
+        queries = np.asarray(queries, dtype=np.float32)
+        if queries.ndim != 2 or queries.shape[1] != self.dim:
+            raise ValueError(f"Expected queries of shape (n, {self.dim}), got {queries.shape}")
+            
+        if len(self.ids) == 0:
+            return np.zeros((len(queries), k), dtype=np.int64)
+            
+        # Compute distances efficiently using optimized distance function
+        dists = self._metric_fn(queries, self._vectors_array)
+        
+        # Get top k indices
+        k = min(k, len(self.ids))  # Don't request more neighbors than we have vectors
+        idx = np.argpartition(dists, k, axis=1)[:, :k]
+        
+        # Sort the k neighbors by distance
+        rows = np.arange(len(queries))[:, None]
+        idx = idx[rows, np.argsort(dists[rows, idx])]
+        
+        # Convert to array for faster indexing
+        return np.array(self.ids)[idx]
 
 class ANNIndex(BaseIndex):
     """Approximate nearest neighbor search using random sampling"""
@@ -100,25 +144,18 @@ class ANNIndex(BaseIndex):
             ids = list(range(len(self.vectors), len(self.vectors) + len(vecs)))
         self.vectors.append(vecs)
         self.ids.extend(ids)
+
+        # Update the concatenated array
+        if not hasattr(self, '_vectors_array'):
+            self._vectors_array = vecs
+        else:
+            self._vectors_array = np.vstack([self._vectors_array, vecs])
         
-    def search(self, queries: np.ndarray, k: int = 10) -> List[List[int]]:
+        
+    def search(self, queries: np.ndarray, k: int = 10) -> np.ndarray:
         queries = np.array(queries)
-        all_vectors = np.vstack(self.vectors)
-        total_vectors = len(all_vectors)
-        
-        results = []
-        for query in queries:
-            # Randomly sample candidates (more than k but less than total)
-            num_samples = min(self.num_candidates, total_vectors)
-            candidate_indices = self._random_gen.sample(range(total_vectors), num_samples)
-            
-            # Calculate distances only for sampled candidates
-            candidate_vectors = all_vectors[candidate_indices]
-            dists = self._metric_fn(query.reshape(1, -1), candidate_vectors)[0]
-            
-            # Get top k among candidates
-            top_k_local = np.argsort(dists)[:k]
-            top_k_global = [candidate_indices[i] for i in top_k_local]
-            results.append([self.ids[i] for i in top_k_global])
-            
-        return results
+        # Use pre-concatenated vectors stored as self._vectors_array
+        dists = self._metric_fn(queries, self._vectors_array)
+        idx = np.argsort(dists, axis=1)[:, :k]
+        # Convert ids list to numpy array for faster indexing
+        return np.array(self.ids)[idx]
