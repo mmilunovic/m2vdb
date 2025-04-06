@@ -44,7 +44,7 @@ def download_sift1m(data_dir: Path):
         tar_path.unlink()
         print("Dataset ready")
 
-def load_sift1m():
+def load_sift1m(limit_queries=1000, limit_vectors=10000):
     """Load SIFT1M dataset, downloading it first if necessary"""
     data_dir = Path("benchmarks/data/sift/")
     
@@ -52,11 +52,11 @@ def load_sift1m():
     required_files = ["sift_base.fvecs", "sift_query.fvecs", "sift_groundtruth.ivecs"]
     files_exist = all((data_dir / f).exists() for f in required_files)
     
-    if not files_exist:
-        download_sift1m(data_dir)
+    # if not files_exist:
+    #     download_sift1m(data_dir)
     
     # Load the dataset
-    xb = read_fvecs(data_dir / "sift_base.fvecs")[:100000]
-    xq = read_fvecs(data_dir / "sift_query.fvecs")[:1000]
-    gt = read_ivecs(data_dir / "sift_groundtruth.ivecs")
+    xb = read_fvecs(data_dir / "sift_base.fvecs")[:limit_vectors]
+    xq = read_fvecs(data_dir / "sift_query.fvecs")[:limit_queries]
+    gt = read_ivecs(data_dir / "sift_groundtruth.ivecs")[:limit_queries]
     return xb, xq, gt

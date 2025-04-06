@@ -3,7 +3,7 @@
 from typing import List, Dict, Any, Optional
 import numpy as np
 import os
-from m2vdb.index import BruteForceIndex, ANNIndex
+from m2vdb.index import BruteForceIndex, IVFIndex
 from m2vdb.storage import IndexManager, FileStorage
 
 class V3cT0rDaTaBas3:
@@ -23,7 +23,8 @@ class V3cT0rDaTaBas3:
                 # Index-specific parameters:
                 metric: Distance metric ('euclidean' or 'cosine', default='euclidean')
                 
-                # For ANNIndex:
+                # For IVFIndex:
+                # TODO: Add IVFIndex parameters
                 num_candidates: Number of candidates to sample (default=100)
                 random_seed: Random seed for sampling (default=1312)
         """
@@ -46,8 +47,8 @@ class V3cT0rDaTaBas3:
             # Create the appropriate index
             if index_type == 'brute_force':
                 self.index = BruteForceIndex(dim=dim, **kwargs)
-            elif index_type == 'ann':
-                self.index = ANNIndex(dim=dim, **kwargs)
+            elif index_type == 'ivf':
+                self.index = IVFIndex(dim=dim, **kwargs)
             else:
                 raise ValueError(f"Unknown index type: {index_type}")
 

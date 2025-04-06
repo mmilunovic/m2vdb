@@ -30,11 +30,12 @@ This project started during an internal Microsoft hackathon. I wanted to learn h
 **Dimensions:** 128  
 
 <!-- BENCHMARK_START -->
-| Method         | 🛠️ Build Time | ⚡ Search Time | 🎯 Recall@10 | 🚀 Throughput (q/s) | 📉 Variance (ms) | 🔍 vs FAISS        | 😬 Embarassment Factor™       |
-|----------------|----------------|----------------|--------------|---------------------|------------------|---------------------|-------------------------------|
-| **FAISS**      | 4.55ms         | 39.10ms         | 0.1639         | —                     | —                  | —                     | 😎 *"Just works."*               |
-| **m2vdb (BF)** | 3.98ms         | 18668.73ms      | 0.1639         | 53.6                  | 1.21               | 🔺 +47647.7%           | 😬 *"Please don't look."*        |
-| **m2vdb (ANN)** | 3.63ms         | 2770.36ms       | 0.0017         | 361.0                 | 0.23               | 🔺 +6985.5%            | 😐 *"Kind of works?"*            |
+# TODO Update and reafactore how I present this shit...
+| Method         | 🛠️ Build Time | ⚡ Search Time | 🎯 Recall@10 | �� Throughput (q/s) | 🔍 vs FAISS        | 😬 Embarassment Factor™       |
+|----------------|----------------|----------------|--------------|---------------------|---------------------|-------------------------------|
+| **FAISS**      | 497.08µs       | 4.80ms          | 0.0197         | —                     | —                     | 😎 *Just works.*                 |
+| **m2vdb (BF)** | 361.38µs       | 70.44ms         | 0.0197         | 14197.0               | 🔺 +1366.8%            | 😬 *Please do not look.*         |
+| **m2vdb (ANN)** | 407.87µs       | 9.21ms          | 0.0020         | 108548.2              | 🔺 +91.8%              | 😐 *Kind of works?*              |
 <!-- BENCHMARK_END -->
 > **😬 Embarassment Factor™** — a completely subjective metric for how ashamed you should feel demoing this to another human.
 

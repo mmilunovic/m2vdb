@@ -5,7 +5,7 @@ import json
 import os
 from abc import ABC, abstractmethod
 from typing import Dict, Any
-from m2vdb.index import BaseIndex, BruteForceIndex, ANNIndex
+from m2vdb.index import BaseIndex, BruteForceIndex, IVFIndex
 
 class BaseStorage(ABC):
     """Abstract base class for storage implementations"""
@@ -72,12 +72,13 @@ class IndexManager:
             'index_type': index.__class__.__name__
         }
         
-        # Save index-specific parameters
-        if isinstance(index, ANNIndex):
-            config['num_candidates'] = index.num_candidates
-            # Save the integer seed value
-            if hasattr(index, 'random_seed'):
-                config['random_seed'] = index.random_seed
+        # TODO: Add IVFIndex parameters
+        # # Save index-specific parameters
+        # if isinstance(index, IVF):
+        #     config['num_candidates'] = index.num_candidates
+        #     # Save the integer seed value
+        #     if hasattr(index, 'random_seed'):
+        #         config['random_seed'] = index.random_seed
             
         self.storage.save_metadata(config, os.path.join(path, "config.json"))
     
@@ -96,18 +97,19 @@ class IndexManager:
         if index_type == 'BruteForceIndex':
             # BruteForceIndex doesn't take additional parameters
             index = BruteForceIndex(dim=dim, metric=metric)
-        elif index_type == 'ANNIndex':
-            # Extract only the parameters ANNIndex expects
-            ann_params = {}
+        # TODO: Add IVFIndex parameters
+        # elif index_type == 'ANNIndex':
+        #     # Extract only the parameters ANNIndex expects
+        #     ann_params = {}
             
-            # Add parameters if they exist in the config
-            if 'num_candidates' in config:
-                ann_params['num_candidates'] = config.pop('num_candidates')
+        #     # Add parameters if they exist in the config
+        #     if 'num_candidates' in config:
+        #         ann_params['num_candidates'] = config.pop('num_candidates')
             
-            if 'random_seed' in config:
-                ann_params['random_seed'] = config.pop('random_seed')
+        #     if 'random_seed' in config:
+        #         ann_params['random_seed'] = config.pop('random_seed')
             
-            index = ANNIndex(dim=dim, metric=metric, **ann_params)
+        #     index = ANNIndex(dim=dim, metric=metric, **ann_params)
         else:
             raise ValueError(f"Unknown index type: {index_type}")
             
