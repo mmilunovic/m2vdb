@@ -4,8 +4,13 @@ import numpy as np
 import json
 import os
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from m2vdb.index import BaseIndex, BruteForceIndex, IVFIndex
+
+
+def _should_memmap(path, threshold_gb=1.0):
+    size_gb = os.path.getsize(path) / (1024 ** 3)
+    return size_gb > threshold_gb
 
 class BaseStorage(ABC):
     """Abstract base class for storage implementations"""
@@ -37,8 +42,11 @@ class FileStorage(BaseStorage):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         np.save(path, vectors)
     
-    def load_vectors(self, path: str) -> np.ndarray:
-        return np.load(path)
+    def load_vectors(self, path: str, memmap: Optional[bool] = None) -> np.ndarray:
+        if memmap is None:
+            memmap = _should_memmap(path)
+        return np.load(path, mmap_mode="r" if memmap else None)
+
     
     def save_metadata(self, metadata: Dict[str, Any], path: str) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -53,7 +61,8 @@ class IndexManager:
     """Manager class for saving and loading indexes"""
     
     def __init__(self, storage=None):
-        from m2vdb.storage import FileStorage
+        # TODO: What if I want to use cloud instead of local storage?
+        # from m2vdb.storage import FileStorage
         self.storage = storage or FileStorage()
 
     def save_index(self, index: BaseIndex, path: str) -> None:
