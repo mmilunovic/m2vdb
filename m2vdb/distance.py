@@ -1,27 +1,17 @@
 # m2vdb/distance.py
 
 import numpy as np
+import numba
 
-def euclidean_distance(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """
-    Compute squared Euclidean distance between two sets of vectors efficiently.
-    Uses the formula: ||a-b||^2 = ||a||^2 + ||b||^2 - 2<a,b>
-    
-    Args:
-        a: First set of vectors (n x d)
-        b: Second set of vectors (m x d)
-    Returns:
-        Distance matrix (n x m)
-    """
-    # Compute squared norms
-    a_norm_sq = np.sum(a**2, axis=1, keepdims=True)  # (n x 1)
-    b_norm_sq = np.sum(b**2, axis=1)  # (m,)
-    
-    # Compute dot product
-    dot_product = np.dot(a, b.T)  # (n x m)
-    
-    # Return squared distances
-    return a_norm_sq + b_norm_sq - 2 * dot_product
+@numba.njit(parallel=True)
+def euclidean_distance(a, b):
+    result = np.empty((a.shape[0], b.shape[0]), dtype=np.float32)
+    for i in numba.prange(a.shape[0]):
+        for j in range(b.shape[0]):
+            diff = a[i] - b[j]
+            result[i, j] = np.dot(diff, diff)
+    return result
+
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """

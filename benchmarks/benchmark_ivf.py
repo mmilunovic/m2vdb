@@ -4,6 +4,12 @@ from benchmarks.datasets import load_sift1m
 from benchmarks.metrics import recall_at_k
 from benchmarks.utils import BenchmarkRunner, format_time, get_memory_usage
 from itertools import product
+import warnings
+import numpy as np
+
+# Suppress specific numerical warnings from scikit-learn
+warnings.filterwarnings('ignore', category=RuntimeWarning, module='sklearn.utils.extmath')
+warnings.filterwarnings('ignore', category=RuntimeWarning, module='sklearn.cluster._kmeans')
 
 def run_benchmark():
     """Run benchmark comparing FAISS IVF vs m2vdb IVF implementation"""
@@ -19,8 +25,8 @@ def run_benchmark():
     print(f"Dimensions:       {xb.shape[1]}")
 
     # Configuration grid
-    nlist_values = [32, 64, 128, 256, 512]  # number of clusters/cells
-    nprobe_values = [4, 8, 12, 16]  # number of cells to visit during search
+    nlist_values = [32, 256]  # number of clusters/cells
+    nprobe_values = [4, 16]  # number of cells to visit during search
 
     # Run benchmarks for each configuration
     for nlist, nprobe in product(nlist_values, nprobe_values):
@@ -42,7 +48,7 @@ def run_benchmark():
         
         runner.start_timer()
         _, faiss_results = faiss_index.search(xq, 10)
-        faiss_search_time = runner.stop_timer()
+        faiss_search_time = runner.stop_timer() / len(xq)
         
         faiss_recall_1 = recall_at_k(faiss_results, gt, k=1)
         faiss_recall_5 = recall_at_k(faiss_results, gt, k=5)
@@ -74,7 +80,7 @@ def run_benchmark():
 
         runner.start_timer()
         m2vdb_results = m2vdb_index.search(xq, k=10)
-        m2vdb_search_time = runner.stop_timer()
+        m2vdb_search_time = runner.stop_timer() / len(xq)
 
         m2vdb_recall_1 = recall_at_k(m2vdb_results, gt, k=1)
         m2vdb_recall_5 = recall_at_k(m2vdb_results, gt, k=5)
