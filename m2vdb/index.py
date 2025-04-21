@@ -156,6 +156,12 @@ class IVFIndex(BaseIndex):
         if vecs.ndim != 2 or vecs.shape[1] != self.dim:
             raise ValueError(f"Expected shape (n, {self.dim}), got {vecs.shape}")
 
+        # Normalize vectors to prevent numerical issues
+        if self.metric == 'cosine':
+            vecs_norm = vecs / np.linalg.norm(vecs, axis=1, keepdims=True)
+            # Add small epsilon to prevent division by zero
+            vecs = np.nan_to_num(vecs_norm, nan=0.0, posinf=1.0, neginf=-1.0)
+       
         # Compute centroids using k-means
         kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.random_seed, n_init="auto")
         kmeans.fit(vecs)

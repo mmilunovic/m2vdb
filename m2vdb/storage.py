@@ -52,76 +52,105 @@ class FileStorage(BaseStorage):
 class IndexManager:
     """Manager class for saving and loading indexes"""
     
-    def __init__(self, storage: BaseStorage = None):
+    def __init__(self, storage=None):
+        from m2vdb.storage import FileStorage
         self.storage = storage or FileStorage()
-    
+
     def save_index(self, index: BaseIndex, path: str) -> None:
-        """Save an index to storage"""
         os.makedirs(path, exist_ok=True)
-        
-        # Save vectors - concatenate all vector arrays in the list
-        if hasattr(index, 'vectors') and index.vectors:
-            vectors = np.vstack(index.vectors) if len(index.vectors) > 0 else np.array([]).reshape(0, index.dim)
-            self.storage.save_vectors(vectors, os.path.join(path, "vectors.npy"))
-        
-        # Save base configuration
+
         config = {
-            'dim': index.dim,
-            'metric': index.metric,
-            'ids': index.ids if hasattr(index, 'ids') and index.ids else None,
-            'index_type': index.__class__.__name__
+            "index_type": index.__class__.__name__,
+            "dim": index.dim,
+            "metric": index.metric,
+            "ids": index.ids if hasattr(index, "ids") else None,
         }
-        
-        # TODO: Add IVFIndex parameters
-        # # Save index-specific parameters
-        # if isinstance(index, IVF):
-        #     config['num_candidates'] = index.num_candidates
-        #     # Save the integer seed value
-        #     if hasattr(index, 'random_seed'):
-        #         config['random_seed'] = index.random_seed
-            
+
+        if isinstance(index, BruteForceIndex):
+            self.storage.save_vectors(index._vectors_array, os.path.join(path, "vectors.npy"))
+
+        elif isinstance(index, IVFIndex):
+            # Save IVF metadata
+            config["n_clusters"] = index.n_clusters
+            config["n_probe"] = index.n_probe
+            config["is_trained"] = index._is_trained
+
+            # Save centroids
+            self.storage.save_vectors(index.centroids, os.path.join(path, "centroids.npy"))
+
+            # Flatten vectors and ids from inverted lists
+            all_vecs = []
+            all_ids = []
+            inverted_map = {}
+
+            for cluster_id, entries in index.inverted_lists.items():
+                cluster_ids = []
+                for vec_id, vec in entries:
+                    all_ids.append(vec_id)
+                    all_vecs.append(vec)
+                    cluster_ids.append(vec_id)
+                inverted_map[str(cluster_id)] = cluster_ids
+
+            all_vecs = np.stack(all_vecs)
+            self.storage.save_vectors(all_vecs, os.path.join(path, "vectors.npy"))
+            self.storage.save_vectors(np.array(all_ids, dtype=np.int64), os.path.join(path, "ids.npy"))
+            self.storage.save_metadata(inverted_map, os.path.join(path, "inverted_lists.json"))
+
+        else:
+            raise ValueError(f"Unsupported index type: {index.__class__.__name__}")
+
+        # Save config
         self.storage.save_metadata(config, os.path.join(path, "config.json"))
-    
+
     def load_index(self, path: str) -> BaseIndex:
-        """Load an index from storage"""
-        # Load configuration
-        config = self.storage.load_metadata(os.path.join(path, "config.json"))
-        
-        # Extract base parameters
-        index_type = config.pop('index_type')
-        dim = config.pop('dim')
-        metric = config.pop('metric')
-        ids = config.pop('ids', None)
-        
-        # Create appropriate index using appropriate parameters
-        if index_type == 'BruteForceIndex':
-            # BruteForceIndex doesn't take additional parameters
+        config_path = os.path.join(path, "config.json")
+        if not os.path.exists(config_path):
+            raise FileNotFoundError("Missing config.json")
+
+        config = self.storage.load_metadata(config_path)
+        index_type = config.pop("index_type")
+        dim = config.pop("dim")
+        metric = config.pop("metric")
+        ids = config.pop("ids", None)
+
+        index = None
+
+        if index_type == "BruteForceIndex":
             index = BruteForceIndex(dim=dim, metric=metric)
-        # TODO: Add IVFIndex parameters
-        # elif index_type == 'ANNIndex':
-        #     # Extract only the parameters ANNIndex expects
-        #     ann_params = {}
+            vectors = self.storage.load_vectors(os.path.join(path, "vectors.npy"))
+            index._vectors_array = vectors
+            index.ids = ids or list(range(len(vectors)))
+
+        elif index_type == "IVFIndex":
+            # All IVF-specific params must be in config
+            missing = [k for k in ("n_clusters", "n_probe", "is_trained") if k not in config]
+            if missing:
+                raise ValueError(f"Missing config fields for IVFIndex: {missing}")
             
-        #     # Add parameters if they exist in the config
-        #     if 'num_candidates' in config:
-        #         ann_params['num_candidates'] = config.pop('num_candidates')
-            
-        #     if 'random_seed' in config:
-        #         ann_params['random_seed'] = config.pop('random_seed')
-            
-        #     index = ANNIndex(dim=dim, metric=metric, **ann_params)
+            index = IVFIndex(dim=dim, metric=metric, **{
+                "n_clusters": config["n_clusters"],
+                "n_probe": config["n_probe"]
+            })
+            index._is_trained = config["is_trained"]
+
+            # Load vectors and IDs
+            vectors = self.storage.load_vectors(os.path.join(path, "vectors.npy"))
+            ids = self.storage.load_vectors(os.path.join(path, "ids.npy")).tolist()
+            index.ids = ids
+            index._vector_map = {id_: vec for id_, vec in zip(ids, vectors)}
+
+            # Load centroids
+            index.centroids = self.storage.load_vectors(os.path.join(path, "centroids.npy"))
+
+            # Load and reconstruct inverted lists
+            raw_lists = self.storage.load_metadata(os.path.join(path, "inverted_lists.json"))
+            for cluster_id_str, id_list in raw_lists.items():
+                cluster_id = int(cluster_id_str)
+                for vec_id in id_list:
+                    vec = index._vector_map.get(vec_id)
+                    if vec is not None:
+                        index.inverted_lists[cluster_id].append((vec_id, vec))
         else:
             raise ValueError(f"Unknown index type: {index_type}")
-            
-        # Load vectors and ids if they exist
-        if os.path.exists(os.path.join(path, "vectors.npy")):
-            vectors = self.storage.load_vectors(os.path.join(path, "vectors.npy"))
-            # Store as a single array in the vectors list
-            if len(vectors) > 0:
-                index.vectors = [vectors]
-                # Regenerate IDs if none were saved
-                if ids is None:
-                    ids = list(range(len(vectors)))
-                index.ids = ids
-        
+
         return index
