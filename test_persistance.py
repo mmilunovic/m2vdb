@@ -23,10 +23,16 @@ def test_ivf_index_persistence(
         queries = np.random.randn(n_queries, dim).astype(np.float32)
         ids = list(range(1337, 1337 + n_vecs))
 
+        # 🔎 Create dummy metadata
+        metadata = {
+            i: {"label": f"item_{i}", "score": float(i % 10) / 10}
+            for i in ids
+        }
+
         # Create and train index
         index = IVFIndex(dim=dim, metric="euclidean", n_clusters=10, n_probe=3)
         index.train(vecs)
-        index.add(vecs, ids)
+        index.add(vecs, ids, metadata)
         results_before = index.search(queries, k=5)
 
         # Save and reload
@@ -50,12 +56,23 @@ def test_ivf_index_persistence(
             after_ids = sorted(id_ for id_, _ in loaded.inverted_lists.get(cid, []))
             assert before_ids == after_ids, f"Inverted list mismatch for cluster {cid}"
 
+        # ✅ Metadata check
+        assert loaded.metadata is not None, "Metadata missing after load"
+        assert len(loaded.metadata) == len(metadata), "Metadata length mismatch"
+        for vec_id in list(metadata.keys())[:10]:
+            # print(vec_id, metadata[vec_id], loaded.metadata[vec_id])
+            assert vec_id in loaded.metadata, f"Missing metadata for ID {vec_id}"
+            assert loaded.metadata[vec_id] == metadata[vec_id], f"Metadata mismatch for ID {vec_id}"
+
+
+
+
         print("✅ IVFIndex persistence test passed.")
 
     finally:
         # Cleanup
         if os.path.exists(save_path):
-            shutil.rmtree(save_path)
+            # shutil.rmtree(save_path)
             print(f"🧹 Cleaned up: {save_path}")
 
 

@@ -3,7 +3,7 @@
 import numpy as np
 from m2vdb.distance import euclidean_distance, cosine_similarity
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from sklearn.cluster import KMeans
 from collections import defaultdict
@@ -23,17 +23,28 @@ class BaseIndex(ABC):
         self.dim = dim
         self.metric = metric
         self._metric_fn = euclidean_distance if metric == 'euclidean' else cosine_similarity
+        self.metadata = {}
 
     @abstractmethod
-    def add(self, vecs: np.ndarray, ids: Optional[List[int]] = None) -> None:
+    def add(
+        self,
+        vecs: np.ndarray,
+        ids: Optional[List[int]] = None,
+        metadata: Optional[Dict[int, Dict]] = None
+    ) -> None:
         """Add vectors to the index"""
         pass
 
     @abstractmethod
-    def search(self, queries: np.ndarray, k: int = 10) -> np.ndarray:
+    def search(
+        self,
+        queries: np.ndarray,
+        k: int = 10
+    ) -> np.ndarray:
         """Search for k nearest neighbors"""
         pass
 
+# TODO: Implement metadata for this
 class BruteForceIndex(BaseIndex):
     """Exact nearest neighbor search using brute force"""
     def __init__(self, dim: int, metric: str = 'euclidean', **kwargs):
@@ -138,10 +149,10 @@ class IVFIndex(BaseIndex):
             unexpected = ', '.join(kwargs.keys())
             raise ValueError(f"Unexpected parameters for IVFIndex: {unexpected}")
         
+        self.ids = []
         self.centroids = None
         self.inverted_lists = defaultdict(list)
         self._vector_map = {}  # vector_id -> vector (optional)
-        self.ids = []
         self._is_trained = False
 
     def train(self, vecs: np.ndarray) -> None:
@@ -168,13 +179,19 @@ class IVFIndex(BaseIndex):
         self.centroids = kmeans.cluster_centers_
         self._is_trained = True
 
-    def add(self, vecs: np.ndarray, ids: Optional[List[int]] = None) -> None:
+    def add(
+        self,
+        vecs: np.ndarray,
+        ids: Optional[List[int]] = None,
+        metadata: Optional[Dict[int, Dict]] = None
+    ) -> None:
         """
         Add vectors to the index. The index must be trained first.
 
         Args:
             vecs: Vectors to add (n x dim)
             ids: Optional list of IDs for the vectors
+            metadata: Optional dict mapping vector IDs to metadata dicts
         """
         vecs = np.asarray(vecs, dtype=np.float32)
         if vecs.ndim != 2 or vecs.shape[1] != self.dim:
@@ -196,6 +213,10 @@ class IVFIndex(BaseIndex):
             self.inverted_lists[cluster_id].append((ids[i], vecs[i]))
             self._vector_map[ids[i]] = vecs[i]
         
+        # Add metadata
+        if metadata:
+            self.metadata.update(metadata)
+
         self.ids.extend(ids)
 
     def search(self, queries: np.ndarray, k: int = 10) -> np.ndarray:
@@ -246,3 +267,8 @@ class IVFIndex(BaseIndex):
             results.append(candidate_ids[top_k_sorted].tolist())
 
         return np.array(results, dtype=np.int64)
+
+    def search_with_metadata(self, queries: np.ndarray, k: int = 10):
+        ids = self.search(queries, k)
+        return ids, [[self.metadata.get(i) for i in row] for row in ids]
+
