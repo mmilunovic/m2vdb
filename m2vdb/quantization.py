@@ -39,29 +39,26 @@ class ProductQuantizer:
         with ThreadPoolExecutor() as pool:
             self.codebooks = list(pool.map(fit_one_subspace, range(self.num_subspaces)))
 
-
     def encode(self, vecs):
-        """Convert vectors to PQ codes (parallelized by row)."""
+        """Convert vectors to PQ codes (vectorized, no useless threading)."""
         vecs = np.asarray(vecs, dtype=np.float32)
-        codes = np.empty((len(vecs), self.num_subspaces), dtype=np.uint8)
+        n = vecs.shape[0]
+        codes = np.empty((n, self.num_subspaces), dtype=np.uint8)
 
-        def encode_one(i):
-            row = vecs[i]
-            code = np.empty(self.num_subspaces, dtype=np.uint8)
-            for m in range(self.num_subspaces):
-                subvec = row[m*self.subdim:(m+1)*self.subdim]
-                centroids = self.codebooks[m]
-                dists = np.linalg.norm(centroids - subvec, axis=1)
-                code[m] = np.argmin(dists)
-            return i, code
+        for m in range(self.num_subspaces):
+            subvecs = vecs[:, m*self.subdim:(m+1)*self.subdim]  # (n_samples, subdim)
+            centroids = self.codebooks[m]  # (n_centroids, subdim)
 
-        with ThreadPoolExecutor() as pool:
-            for i, code in pool.map(encode_one, range(len(vecs))):
-                codes[i] = code
+            # Compute distance from each subvector to each centroid
+            # Result: (n_samples, n_centroids)
+            dists = np.linalg.norm(subvecs[:, None, :] - centroids[None, :, :], axis=2)
+
+            # Take the nearest centroid for each subvector
+            codes[:, m] = np.argmin(dists, axis=1)
 
         return codes
-    
 
+    
     def _decode(self, codes):
         """Reconstruct approximate vectors from PQ codes."""
         n = len(codes)
@@ -73,14 +70,26 @@ class ProductQuantizer:
 
         return vecs
     
-    def build_lookup_table(self, query: np.ndarray) -> np.ndarray:
-        """Given a query vector, build a lookup table of distances to centroids for each subspace."""
-        query = np.asarray(query, dtype=np.float32)
-        lookup = np.empty((self.num_subspaces, self.centroids_per_subspace), dtype=np.float32)
+    def build_lookup_table(self, queries: np.ndarray) -> np.ndarray:
+        """
+        Build lookup tables for a batch of queries.
+        
+        Args:
+            queries (np.ndarray): (n_queries, dim)
+            
+        Returns:
+            lookup_tables (np.ndarray): (n_queries, num_subspaces, centroids_per_subspace)
+        """
+        queries = np.asarray(queries, dtype=np.float32)
+        n_queries = queries.shape[0]
+        lookup = np.empty((n_queries, self.num_subspaces, self.centroids_per_subspace), dtype=np.float32)
 
         for m in range(self.num_subspaces):
-            query_subvec = query[m*self.subdim:(m+1)*self.subdim]
-            centroids = self.codebooks[m]
-            lookup[m] = np.linalg.norm(centroids - query_subvec, axis=1)
-
+            query_subvecs = queries[:, m*self.subdim:(m+1)*self.subdim]  # (n_queries, subdim)
+            centroids = self.codebooks[m]  # (centroids_per_subspace, subdim)
+            
+            # Compute distance: broadcasting (n_queries, 1, subdim) - (1, centroids_per_subspace, subdim)
+            diff = query_subvecs[:, None, :] - centroids[None, :, :]
+            lookup[:, m, :] = np.linalg.norm(diff, axis=2)  # (n_queries, centroids_per_subspace)
+        
         return lookup

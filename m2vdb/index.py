@@ -325,20 +325,38 @@ class PQIndex(BaseIndex):
         if self.codes is None or len(self.ids) == 0:
             return np.zeros((len(queries), k), dtype=np.int64)
 
-        results = []
-        for q in queries:
-            lookup = self.pq.build_lookup_table(q)
-            dists = np.zeros(len(self.codes), dtype=np.float32)
+        n_queries = queries.shape[0]
+        n_db = self.codes.shape[0]
 
-            for m in range(self.num_subspaces):
-                dists += lookup[m, self.codes[:, m]]
+        # Build lookup tables for all queries at once
+        lookup_tables = np.empty((n_queries, self.num_subspaces, self.centroids_per_subspace), dtype=np.float32)
 
-            k_actual = min(k, len(dists))
-            top_k_idx = np.argpartition(dists, k_actual)[:k_actual]
-            top_k_sorted = top_k_idx[np.argsort(dists[top_k_idx])]
-            results.append(np.array(self.ids)[top_k_sorted].tolist())
+        for m in range(self.num_subspaces):
+            centroids = self.pq.codebooks[m]  # (n_centroids, subdim)
+            query_subvecs = queries[:, m*self.pq.subdim:(m+1)*self.pq.subdim]  # (n_queries, subdim)
 
-        return np.array(results, dtype=np.int64)
+            lookup_tables[:, m] = np.linalg.norm(
+                query_subvecs[:, None, :] - centroids[None, :, :],
+                axis=2
+            )
+
+        # Compute distances
+        dists = np.zeros((n_queries, n_db), dtype=np.float32)
+
+        for m in range(self.num_subspaces):
+            dists += lookup_tables[:, m][:, self.codes[:, m]]
+
+        # Select top-k for each query
+        k = min(k, n_db)
+        top_k_idx = np.argpartition(dists, k, axis=1)[:, :k]
+
+        # Sort each row
+        rows = np.arange(n_queries)[:, None]
+        sorted_top_k_idx = top_k_idx[rows, np.argsort(dists[rows, top_k_idx], axis=1)]
+
+        return np.array(self.ids)[sorted_top_k_idx]
+
+
 
     def search_with_metadata(self, queries: np.ndarray, k: int = 10):
         ids = self.search(queries, k)
