@@ -29,8 +29,8 @@ This project started during an internal Microsoft hackathon. I wanted to learn h
 **Query vectors:** 1,000  
 **Dimensions:** 128  
 
+TODO Update and reafactore how I present the results
 <!-- BENCHMARK_START -->
-# TODO Update and reafactore how I present this shit...
 | Method         | 🛠️ Build Time | ⚡ Search Time | 🎯 Recall@10 | �� Throughput (q/s) | 🔍 vs FAISS        | 😬 Embarassment Factor™       |
 |----------------|----------------|----------------|--------------|---------------------|---------------------|-------------------------------|
 | **FAISS**      | 497.08µs       | 4.80ms          | 0.0197         | —                     | —                     | 😎 *Just works.*                 |
