@@ -5,14 +5,14 @@ from benchmarks.datasets import load_sift1m
 from benchmarks.metrics import recall_at_k
 from benchmarks.utils import BenchmarkRunner, format_time, get_memory_usage
 
-def run_benchmark():
+def run_benchmark(return_runner=False):
     runner = BenchmarkRunner(
         name="PQ Search Benchmark",
         description="Benchmarking FAISS PQ vs m2vdb PQIndex vs BruteForce ground-truth"
     )
 
     print("Loading SIFT1M dataset...")
-    xb, xq, gt = load_sift1m(limit_queries=1000, limit_vectors=100_000)  # smaller, because PQ training
+    xb, xq, gt = load_sift1m(limit_queries=1000, limit_vectors=10_000)  # smaller, because PQ training
     print(f"Database vectors: {len(xb):,}")
     print(f"Query vectors:    {len(xq):,}")
     print(f"Dimensions:       {xb.shape[1]}")
@@ -95,8 +95,10 @@ def run_benchmark():
         "memory_mb": get_memory_usage()
     })
 
-    # Print results nicely
-    runner.print_results()
+    if return_runner:
+        return runner
+    else:
+        runner.print_results()
 
 if __name__ == "__main__":
     run_benchmark()
