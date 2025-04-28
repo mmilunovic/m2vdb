@@ -1,12 +1,14 @@
 # m2vdb/index.py
 
-import numpy as np
-from m2vdb.distance import euclidean_distance, cosine_similarity
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict
 
+import numpy as np
 from sklearn.cluster import KMeans
 from collections import defaultdict
+
+from m2vdb.distance import euclidean_distance, cosine_similarity
+from m2vdb.quantization import ProductQuantizer
 
 
 class BaseIndex(ABC):
@@ -126,7 +128,7 @@ class BruteForceIndex(BaseIndex):
 
 class IVFIndex(BaseIndex):
     """
-    Inverted File Index (IVF) for approximate nearest neighbor search using coarse quantization.
+    Inverted File Index (IVF) for approximate nearest neighbor search.
     """
     def __init__(self, dim: int, metric: str = 'euclidean', **kwargs):
         """
@@ -272,3 +274,72 @@ class IVFIndex(BaseIndex):
         ids = self.search(queries, k)
         return ids, [[self.metadata.get(i) for i in row] for row in ids]
 
+class PQIndex(BaseIndex):
+    """Product Quantization (PQ) index for compressed nearest neighbor search."""
+    def __init__(self, dim: int, metric: str = 'euclidean', **kwargs):
+        super().__init__(dim, metric)
+        self.num_subspaces = kwargs.pop('num_subspaces', 4)
+        self.centroids_per_subspace = kwargs.pop('centroids_per_subspace', 256)
+        self.pq = ProductQuantizer(
+            dim=dim,
+            num_subspaces=self.num_subspaces,
+            centroids_per_subspace=self.centroids_per_subspace,
+            seed=kwargs.pop('seed', 42)
+        )
+        self.codes = None  # Encoded dataset
+        self.ids = []
+        self._is_trained = False
+
+    def train(self, vecs: np.ndarray) -> None:
+        vecs = np.asarray(vecs, dtype=np.float32)
+        self.pq.fit(vecs)
+        self._is_trained = True
+
+    def add(self, vecs: np.ndarray, ids: Optional[List[int]] = None, metadata: Optional[Dict[int, Dict]] = None) -> None:
+        vecs = np.asarray(vecs, dtype=np.float32)
+        if vecs.ndim != 2 or vecs.shape[1] != self.dim:
+            raise ValueError(f"Expected shape (n, {self.dim}), got {vecs.shape}")
+
+        if ids is None:
+            ids = list(range(len(self.ids), len(self.ids) + len(vecs)))
+
+        if not self._is_trained:
+            self.train(vecs)
+
+        new_codes = self.pq.encode(vecs)
+        if self.codes is None:
+            self.codes = new_codes
+        else:
+            self.codes = np.vstack([self.codes, new_codes])
+
+        self.ids.extend(ids)
+
+        if metadata:
+            self.metadata.update(metadata)
+
+    def search(self, queries: np.ndarray, k: int = 10) -> np.ndarray:
+        queries = np.asarray(queries, dtype=np.float32)
+        if queries.ndim != 2 or queries.shape[1] != self.dim:
+            raise ValueError(f"Expected queries of shape (n, {self.dim}), got {queries.shape}")
+
+        if self.codes is None or len(self.ids) == 0:
+            return np.zeros((len(queries), k), dtype=np.int64)
+
+        results = []
+        for q in queries:
+            lookup = self.pq.build_lookup_table(q)
+            dists = np.zeros(len(self.codes), dtype=np.float32)
+
+            for m in range(self.num_subspaces):
+                dists += lookup[m, self.codes[:, m]]
+
+            k_actual = min(k, len(dists))
+            top_k_idx = np.argpartition(dists, k_actual)[:k_actual]
+            top_k_sorted = top_k_idx[np.argsort(dists[top_k_idx])]
+            results.append(np.array(self.ids)[top_k_sorted].tolist())
+
+        return np.array(results, dtype=np.int64)
+
+    def search_with_metadata(self, queries: np.ndarray, k: int = 10):
+        ids = self.search(queries, k)
+        return ids, [[self.metadata.get(i) for i in row] for row in ids]

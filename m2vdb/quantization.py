@@ -6,7 +6,7 @@ import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
-class PQ:
+class ProductQuantizer:
     def __init__(self, dim, num_subspaces=4, centroids_per_subspace=256, seed=42):
         """
         Product Quantizer for vector compression.
@@ -72,31 +72,15 @@ class PQ:
             vecs[:, m*self.subdim:(m+1)*self.subdim] = centroids[codes[:, m]]
 
         return vecs
+    
+    def build_lookup_table(self, query: np.ndarray) -> np.ndarray:
+        """Given a query vector, build a lookup table of distances to centroids for each subspace."""
+        query = np.asarray(query, dtype=np.float32)
+        lookup = np.empty((self.num_subspaces, self.centroids_per_subspace), dtype=np.float32)
 
+        for m in range(self.num_subspaces):
+            query_subvec = query[m*self.subdim:(m+1)*self.subdim]
+            centroids = self.codebooks[m]
+            lookup[m] = np.linalg.norm(centroids - query_subvec, axis=1)
 
-
-
-# # --- Simple test code ---
-# if __name__ == "__main__":
-#     np.random.seed(1337)
-#     dim = 64
-#     n = 10_000
-#     num_subspaces = 8
-#     centroids_per_subspace = 32
-
-#     # Create toy data
-#     X = np.random.randn(n, dim).astype(np.float32)
-
-#     # Create and fit PQ
-#     pq = PQ(dim, num_subspaces=num_subspaces, centroids_per_subspace=centroids_per_subspace)
-#     pq.fit(X)
-
-#     # Encode + decode
-#     codes = pq.encode(X)
-#     X_approx = pq._decode(codes)
-
-#     # Reconstruction error
-#     mse = np.mean((X - X_approx) ** 2)
-#     print("✅ PQ test complete")
-#     print(f"Reconstruction MSE: {mse:.4f}")
-#     print(f"Code shape: {codes.shape}, dtype: {codes.dtype}")
+        return lookup
