@@ -176,5 +176,8 @@ cython_debug/
 # During development, don't push notebooks
 *.ipynb
 
+# Ignore all _data folders
+**/_data/
+
 # Benchmarks
 benchmarks/data/
