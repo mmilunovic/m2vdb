@@ -15,9 +15,32 @@ interface VectorData {
   };
 }
 
+interface SearchResult {
+  id: number;
+  text: string;
+  similarity_score: number;
+  metadata: {
+    source: string;
+    category: string;
+  };
+}
+
+interface SearchResponse {
+  query: string;
+  results: SearchResult[];
+  stats: {
+    total_vectors_searched: number;
+    k: number;
+    metric: string;
+  };
+  notification: string | null;
+}
+
 function App() {
   const [vectors, setVectors] = useState<VectorData[]>([]);
   const [selectedVector, setSelectedVector] = useState<VectorData | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Fetch all vectors on mount
   useEffect(() => {
@@ -56,15 +79,33 @@ function App() {
     }
   };
 
+  // Handle search
+  const handleSearch = async (query: string) => {
+    try {
+      setSearchQuery(query);
+      const response = await axios.post<SearchResponse>('http://localhost:8000/search_text', {
+        query: query,
+        k: 5
+      });
+      setSearchResults(response.data.results);
+      // Clear selected vector when searching
+      setSelectedVector(null);
+    } catch (error) {
+      console.error('Error searching:', error);
+    }
+  };
+
   return (
     <div className="App">
-      <VectorControls onAddVector={handleAddVector} />
+      <VectorControls onAddVector={handleAddVector} onSearch={handleSearch} />
       <div style={{ marginTop: '92px' }}>
         <VectorVisualization
           vectors={vectors}
           setVectors={setVectors}
           selectedVector={selectedVector}
           setSelectedVector={setSelectedVector}
+          searchResults={searchResults}
+          searchQuery={searchQuery}
         />
       </div>
     </div>

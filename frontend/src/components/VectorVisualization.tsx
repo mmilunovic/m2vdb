@@ -24,11 +24,23 @@ interface NeighborData {
   };
 }
 
+interface SearchResult {
+  id: number;
+  text: string;
+  similarity_score: number;
+  metadata: {
+    source: string;
+    category: string;
+  };
+}
+
 interface VectorVisualizationProps {
   vectors: VectorData[];
   setVectors: React.Dispatch<React.SetStateAction<VectorData[]>>;
   selectedVector: VectorData | null;
   setSelectedVector: React.Dispatch<React.SetStateAction<VectorData | null>>;
+  searchResults: SearchResult[];
+  searchQuery: string;
 }
 
 const VectorVisualization: React.FC<VectorVisualizationProps> = ({
@@ -36,6 +48,8 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
   setVectors,
   selectedVector,
   setSelectedVector,
+  searchResults,
+  searchQuery,
 }) => {
   const plotRef = useRef<HTMLDivElement>(null);
   const [neighbors, setNeighbors] = useState<NeighborData[]>([]);
@@ -242,183 +256,315 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
       <div 
         ref={plotRef} 
         style={{ 
-          width: selectedVector ? '70%' : '100%',
+          width: selectedVector || searchResults.length > 0 ? '70%' : '100%',
           height: '100vh',
           border: 'none',
           borderRadius: '0',
           overflow: 'hidden',
           transition: 'width 0.3s ease',
-          boxShadow: selectedVector ? '0 0 0 1px rgba(0, 0, 0, 0.1)' : 'none'
+          boxShadow: selectedVector || searchResults.length > 0 ? '0 0 0 1px rgba(0, 0, 0, 0.1)' : 'none',
+          position: 'fixed',
+          left: 0,
+          top: '92px'
         }} 
       />
-      {selectedVector && (
+      {(selectedVector || searchResults.length > 0) && (
         <div style={{
           width: '30%',
           padding: '32px',
           backgroundColor: '#ffffff',
           overflowY: 'auto',
           color: '#37352f',
-          borderLeft: '1px solid rgba(0, 0, 0, 0.1)'
+          borderLeft: '1px solid rgba(0, 0, 0, 0.1)',
+          position: 'fixed',
+          right: 0,
+          top: '92px',
+          height: 'calc(100vh - 92px)'
         }}>
-          <div style={{ marginBottom: '32px' }}>
-            <div style={{ 
-              fontSize: '32px',
-              fontWeight: '700',
-              color: '#37352f',
-              marginBottom: '16px',
-              fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace'
-            }}>
-              #{selectedVector.id}
-            </div>
-            <div style={{ 
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px'
-            }}>
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '14px',
-                color: '#787774'
-              }}>
-                <span>🏷️ Category:</span>
-                <span style={{ 
-                  backgroundColor: '#f1f1ef',
-                  padding: '2px 8px',
-                  borderRadius: '3px',
+          {selectedVector ? (
+            // Show selected vector info
+            <>
+              <div style={{ marginBottom: '32px' }}>
+                <div style={{ 
+                  fontSize: '32px',
+                  fontWeight: '700',
+                  color: '#37352f',
+                  marginBottom: '16px',
+                  fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace'
+                }}>
+                  #{selectedVector.id}
+                </div>
+                <div style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}>
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '14px',
+                    color: '#787774'
+                  }}>
+                    <span>🏷️ Category:</span>
+                    <span style={{ 
+                      backgroundColor: '#f1f1ef',
+                      padding: '2px 8px',
+                      borderRadius: '3px',
+                      color: '#37352f'
+                    }}>
+                      {selectedVector.metadata.category}
+                    </span>
+                  </div>
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '14px',
+                    color: '#787774'
+                  }}>
+                    <span>📚 Source:</span>
+                    <span style={{ 
+                      backgroundColor: '#f1f1ef',
+                      padding: '2px 8px',
+                      borderRadius: '3px',
+                      color: '#37352f'
+                    }}>
+                      {selectedVector.metadata.source}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '32px' }}>
+                <div style={{ 
+                  fontSize: '13px',
+                  color: '#787774',
+                  marginBottom: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <span>📝</span> Content
+                </div>
+                <div style={{ 
+                  backgroundColor: '#f7f6f3', 
+                  padding: '16px', 
+                  borderRadius: '4px',
+                  fontSize: '13px', 
+                  lineHeight: '1.5',
                   color: '#37352f'
                 }}>
-                  {selectedVector.metadata.category}
-                </span>
+                  {selectedVector.text}
+                </div>
               </div>
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '14px',
-                color: '#787774'
-              }}>
-                <span>📚 Source:</span>
-                <span style={{ 
-                  backgroundColor: '#f1f1ef',
-                  padding: '2px 8px',
-                  borderRadius: '3px',
-                  color: '#37352f'
+
+              <div style={{ marginBottom: '48px' }}>
+                <div style={{ 
+                  fontSize: '13px',
+                  color: '#787774',
+                  marginBottom: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
                 }}>
-                  {selectedVector.metadata.source}
-                </span>
+                  <span>🔢</span> Vector Values
+                </div>
+                <div style={{ 
+                  backgroundColor: '#f7f6f3', 
+                  padding: '16px', 
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                  color: '#37352f',
+                  fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace'
+                }}>
+                  <div style={{ marginBottom: '8px', color: '#787774' }}>
+                    Dimension: {selectedVector.vector.length}
+                  </div>
+                  <div style={{ 
+                    backgroundColor: '#ffffff',
+                    padding: '12px',
+                    borderRadius: '3px',
+                    border: '1px solid rgba(0, 0, 0, 0.1)'
+                  }}>
+                    [{selectedVector.vector.slice(0, 3).map(v => v.toFixed(4)).join(', ')} ... {selectedVector.vector.slice(-2).map(v => v.toFixed(4)).join(', ')}]
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div style={{ marginBottom: '32px' }}>
-            <div style={{ 
-              fontSize: '13px',
-              color: '#787774',
-              marginBottom: '8px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <span>📝</span> Content
-            </div>
-            <div style={{ 
-              backgroundColor: '#f7f6f3', 
-              padding: '16px', 
-              borderRadius: '4px',
-              fontSize: '13px', 
-              lineHeight: '1.5',
-              color: '#37352f'
-            }}>
-              {selectedVector.text}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '48px' }}>
-            <div style={{ 
-              fontSize: '13px',
-              color: '#787774',
-              marginBottom: '8px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <span>🔢</span> Vector Values
-            </div>
-            <div style={{ 
-              backgroundColor: '#f7f6f3', 
-              padding: '16px', 
-              borderRadius: '4px',
-              fontSize: '13px',
-              lineHeight: '1.5',
-              color: '#37352f',
-              fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace'
-            }}>
-              <div style={{ marginBottom: '8px', color: '#787774' }}>
-                Dimension: {selectedVector.vector.length}
+              <div style={{ marginBottom: '32px' }}>
+                <div 
+                  style={{ 
+                    fontSize: '13px',
+                    color: '#787774',
+                    marginBottom: '8px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    userSelect: 'none'
+                  }}
+                  onClick={() => setIsNeighborsExpanded(!isNeighborsExpanded)}
+                >
+                  <span>🔍</span> Nearest Neighbors
+                  <span style={{ 
+                    marginLeft: 'auto',
+                    transition: 'transform 0.2s ease',
+                    transform: isNeighborsExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
+                  }}>
+                    ▼
+                  </span>
+                </div>
+                <div style={{ 
+                  backgroundColor: '#f7f6f3', 
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                  color: '#37352f',
+                  maxHeight: isNeighborsExpanded ? '1000px' : '0',
+                  overflow: 'hidden',
+                  transition: 'max-height 0.3s ease, padding 0.3s ease',
+                  padding: isNeighborsExpanded ? '16px' : '0 16px'
+                }}>
+                  {neighbors.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      {neighbors.map((neighbor, index) => (
+                        <div 
+                          key={neighbor.id}
+                          style={{
+                            backgroundColor: '#ffffff',
+                            padding: '12px',
+                            borderRadius: '3px',
+                            border: '1px solid rgba(0, 0, 0, 0.1)'
+                          }}
+                        >
+                          <div style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '8px'
+                          }}>
+                            <div style={{ 
+                              fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace',
+                              fontWeight: '600',
+                              fontSize: '13px'
+                            }}>
+                              #{neighbor.id}
+                            </div>
+                            <div style={{ 
+                              fontSize: '11px',
+                              color: '#787774',
+                              backgroundColor: '#f1f1ef',
+                              padding: '2px 8px',
+                              borderRadius: '3px'
+                            }}>
+                              {neighbor.distance.toFixed(4)}
+                            </div>
+                          </div>
+                          <div style={{ 
+                            fontSize: '12px',
+                            color: '#37352f',
+                            marginBottom: '8px'
+                          }}>
+                            {neighbor.text}
+                          </div>
+                          <div style={{ 
+                            display: 'flex',
+                            gap: '8px',
+                            fontSize: '11px'
+                          }}>
+                            <span style={{ 
+                              backgroundColor: '#f1f1ef',
+                              padding: '2px 8px',
+                              borderRadius: '3px',
+                              color: '#787774'
+                            }}>
+                              {neighbor.metadata.category}
+                            </span>
+                            <span style={{ 
+                              backgroundColor: '#f1f1ef',
+                              padding: '2px 8px',
+                              borderRadius: '3px',
+                              color: '#787774'
+                            }}>
+                              {neighbor.metadata.source}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ color: '#787774', textAlign: 'center' }}>
+                      No neighbors found
+                    </div>
+                  )}
+                </div>
               </div>
-              <div style={{ 
-                backgroundColor: '#ffffff',
-                padding: '12px',
-                borderRadius: '3px',
-                border: '1px solid rgba(0, 0, 0, 0.1)'
-              }}>
-                [{selectedVector.vector.slice(0, 3).map(v => v.toFixed(4)).join(', ')} ... {selectedVector.vector.slice(-2).map(v => v.toFixed(4)).join(', ')}]
+            </>
+          ) : (
+            // Show search results
+            <>
+              <div style={{ marginBottom: '32px' }}>
+                <div style={{ 
+                  fontSize: '32px',
+                  fontWeight: '700',
+                  color: '#37352f',
+                  marginBottom: '16px',
+                }}>
+                  Search Results
+                </div>
+                <div style={{ 
+                  fontSize: '16px',
+                  color: '#37352f',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span>🔍</span>
+                  <span style={{ fontWeight: '500' }}>Query:</span>
+                  <span style={{ color: '#787774' }}>"{searchQuery}"</span>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div style={{ marginBottom: '32px' }}>
-            <div 
-              style={{ 
-                fontSize: '13px',
-                color: '#787774',
-                marginBottom: '8px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                userSelect: 'none'
-              }}
-              onClick={() => setIsNeighborsExpanded(!isNeighborsExpanded)}
-            >
-              <span>🔍</span> Nearest Neighbors
-              <span style={{ 
-                marginLeft: 'auto',
-                transition: 'transform 0.2s ease',
-                transform: isNeighborsExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
-              }}>
-                ▼
-              </span>
-            </div>
-            <div style={{ 
-              backgroundColor: '#f7f6f3', 
-              borderRadius: '4px',
-              fontSize: '13px',
-              lineHeight: '1.5',
-              color: '#37352f',
-              maxHeight: isNeighborsExpanded ? '1000px' : '0',
-              overflow: 'hidden',
-              transition: 'max-height 0.3s ease, padding 0.3s ease',
-              padding: isNeighborsExpanded ? '16px' : '0 16px'
-            }}>
-              {neighbors.length > 0 ? (
+              <div style={{ marginBottom: '32px' }}>
+                <div style={{ 
+                  fontSize: '13px',
+                  color: '#787774',
+                  marginBottom: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <span>📋</span> Results
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {neighbors.map((neighbor, index) => (
+                  {searchResults.map((result) => (
                     <div 
-                      key={neighbor.id}
+                      key={result.id}
                       style={{
-                        backgroundColor: '#ffffff',
-                        padding: '12px',
-                        borderRadius: '3px',
-                        border: '1px solid rgba(0, 0, 0, 0.1)'
+                        backgroundColor: '#f7f6f3',
+                        padding: '16px',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      onMouseOver={e => e.currentTarget.style.backgroundColor = '#f1f1ef'}
+                      onMouseOut={e => e.currentTarget.style.backgroundColor = '#f7f6f3'}
+                      onClick={() => {
+                        const vector = vectors.find(v => v.id === result.id);
+                        if (vector) {
+                          setSelectedVector(vector);
+                        }
                       }}
                     >
                       <div style={{ 
@@ -432,24 +578,25 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
                           fontWeight: '600',
                           fontSize: '13px'
                         }}>
-                          #{neighbor.id}
+                          #{result.id}
                         </div>
                         <div style={{ 
                           fontSize: '11px',
                           color: '#787774',
-                          backgroundColor: '#f1f1ef',
+                          backgroundColor: '#ffffff',
                           padding: '2px 8px',
                           borderRadius: '3px'
                         }}>
-                          {neighbor.distance.toFixed(4)}
+                          {result.similarity_score.toFixed(4)}
                         </div>
                       </div>
                       <div style={{ 
-                        fontSize: '12px',
+                        fontSize: '13px',
                         color: '#37352f',
-                        marginBottom: '8px'
+                        marginBottom: '8px',
+                        lineHeight: '1.5'
                       }}>
-                        {neighbor.text}
+                        {result.text}
                       </div>
                       <div style={{ 
                         display: 'flex',
@@ -457,32 +604,28 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
                         fontSize: '11px'
                       }}>
                         <span style={{ 
-                          backgroundColor: '#f1f1ef',
+                          backgroundColor: '#ffffff',
                           padding: '2px 8px',
                           borderRadius: '3px',
                           color: '#787774'
                         }}>
-                          {neighbor.metadata.category}
+                          {result.metadata.category}
                         </span>
                         <span style={{ 
-                          backgroundColor: '#f1f1ef',
+                          backgroundColor: '#ffffff',
                           padding: '2px 8px',
                           borderRadius: '3px',
                           color: '#787774'
                         }}>
-                          {neighbor.metadata.source}
+                          {result.metadata.source}
                         </span>
                       </div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div style={{ color: '#787774', textAlign: 'center' }}>
-                  No neighbors found
-                </div>
-              )}
-            </div>
-          </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
