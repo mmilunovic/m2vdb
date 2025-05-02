@@ -40,6 +40,7 @@ interface VectorVisualizationProps {
   selectedVector: VectorData | null;
   setSelectedVector: React.Dispatch<React.SetStateAction<VectorData | null>>;
   searchResults: SearchResult[];
+  setSearchResults: React.Dispatch<React.SetStateAction<SearchResult[]>>;
   searchQuery: string;
 }
 
@@ -49,6 +50,7 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
   selectedVector,
   setSelectedVector,
   searchResults,
+  setSearchResults,
   searchQuery,
 }) => {
   const plotRef = useRef<HTMLDivElement>(null);
@@ -262,10 +264,10 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
           borderRadius: '0',
           overflow: 'hidden',
           transition: 'width 0.3s ease',
-          boxShadow: selectedVector || searchResults.length > 0 ? '0 0 0 1px rgba(0, 0, 0, 0.1)' : 'none',
+          boxShadow: 'none',
           position: 'fixed',
           left: 0,
-          top: '92px'
+          top: 0
         }} 
       />
       {(selectedVector || searchResults.length > 0) && (
@@ -284,6 +286,50 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
           {selectedVector ? (
             // Show selected vector info
             <>
+              <div style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '32px',
+              }}>
+                <div style={{ 
+                  fontSize: '24px',
+                  fontWeight: '600',
+                  color: '#37352f',
+                }}>
+                  Vector Details
+                </div>
+                <button
+                  onClick={() => setSelectedVector(null)}
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    marginLeft: '8px',
+                    cursor: 'pointer',
+                    color: '#b3b3b1',
+                    borderRadius: '3px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '20px',
+                    transition: 'background-color 0.2s ease, color 0.2s ease',
+                  }}
+                  onMouseOver={e => {
+                    e.currentTarget.style.backgroundColor = '#f1f1ef';
+                    e.currentTarget.style.color = '#37352f';
+                  }}
+                  onMouseOut={e => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#b3b3b1';
+                  }}
+                  aria-label="Close details"
+                >
+                  ✕
+                </button>
+              </div>
               <div style={{ marginBottom: '32px' }}>
                 <div style={{ 
                   fontSize: '32px',
@@ -511,29 +557,65 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
           ) : (
             // Show search results
             <>
-              <div style={{ marginBottom: '32px' }}>
+              <div style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '32px',
+              }}>
                 <div style={{ 
-                  fontSize: '32px',
-                  fontWeight: '700',
+                  fontSize: '24px',
+                  fontWeight: '600',
                   color: '#37352f',
-                  marginBottom: '16px',
                 }}>
                   Search Results
                 </div>
-                <div style={{ 
-                  fontSize: '16px',
-                  color: '#37352f',
-                  marginBottom: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <span>🔍</span>
-                  <span style={{ fontWeight: '500' }}>Query:</span>
-                  <span style={{ color: '#787774' }}>"{searchQuery}"</span>
-                </div>
+                <button
+                  onClick={() => {
+                    setSelectedVector(null);
+                    setSearchResults([]);
+                  }}
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    marginLeft: '8px',
+                    cursor: 'pointer',
+                    color: '#b3b3b1',
+                    borderRadius: '3px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '20px',
+                    transition: 'background-color 0.2s ease, color 0.2s ease',
+                  }}
+                  onMouseOver={e => {
+                    e.currentTarget.style.backgroundColor = '#f1f1ef';
+                    e.currentTarget.style.color = '#37352f';
+                  }}
+                  onMouseOut={e => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#b3b3b1';
+                  }}
+                  aria-label="Close search results"
+                >
+                  ✕
+                </button>
               </div>
-
+              <div style={{ 
+                fontSize: '16px',
+                color: '#37352f',
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span>🔍</span>
+                <span style={{ fontWeight: '500' }}>Query:</span>
+                <span style={{ color: '#787774' }}>&quot;{searchQuery}&quot;</span>
+              </div>
               <div style={{ marginBottom: '32px' }}>
                 <div style={{ 
                   fontSize: '13px',

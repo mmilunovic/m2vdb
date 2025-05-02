@@ -98,13 +98,14 @@ function App() {
   return (
     <div className="App">
       <VectorControls onAddVector={handleAddVector} onSearch={handleSearch} />
-      <div style={{ marginTop: '92px' }}>
+      <div>
         <VectorVisualization
           vectors={vectors}
           setVectors={setVectors}
           selectedVector={selectedVector}
           setSelectedVector={setSelectedVector}
           searchResults={searchResults}
+          setSearchResults={setSearchResults}
           searchQuery={searchQuery}
         />
       </div>
