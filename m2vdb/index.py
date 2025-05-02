@@ -127,9 +127,12 @@ class BruteForceIndex(BaseIndex):
         # Compute distances efficiently using optimized distance function
         dists = self._metric_fn(queries, self._vectors_array)
         
-        # Get top k indices
-        k = min(k, len(self.ids))  # Don't request more neighbors than we have vectors
-        idx = np.argpartition(dists, k, axis=1)[:, :k]
+        # Adjust k if it's larger than available vectors
+        k = min(k, len(self.ids))
+        
+        # Get top k indices - use k-1 for argpartition when k equals array length
+        partition_k = k if k < len(self.ids) else k - 1
+        idx = np.argpartition(dists, partition_k, axis=1)[:, :k]
         
         # Sort the k neighbors by distance
         rows = np.arange(len(queries))[:, None]

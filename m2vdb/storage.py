@@ -44,7 +44,7 @@ class BaseStorage(ABC):
     def load_vector_metadata(self, path: str) -> Dict[int, Dict]:
         """Load vector metadata from storage"""
         pass
-    
+
     
 class FileStorage(BaseStorage):
     """File-based storage implementation"""
@@ -107,7 +107,15 @@ class IndexManager:
         }
 
         if isinstance(index, BruteForceIndex):
+            # Save config first
+            self.storage.save_config(config, os.path.join(path, "config.json"))
+            
+            # Save vectors
             self.storage.save_vectors(index._vectors_array, os.path.join(path, "vectors.npy"))
+            
+            # Save metadata if it exists
+            if hasattr(index, 'metadata') and index.metadata:
+                self.storage.save_vector_metadata(index.metadata, os.path.join(path, "metadata.json"))
 
         elif isinstance(index, IVFIndex):
             # Save IVF metadata
@@ -115,13 +123,12 @@ class IndexManager:
             config["n_probe"] = index.n_probe
             config["is_trained"] = index._is_trained
 
-            # Save config, this is ok to be json
+            # Save config first
             self.storage.save_config(config, os.path.join(path, "config.json"))
 
             # Save metadata if it exists
             if index.metadata:
                 self.storage.save_vector_metadata(index.metadata, os.path.join(path, "vector_metadata.json"))
-
 
             # Save centroids
             self.storage.save_vectors(index.centroids, os.path.join(path, "centroids.npy"))
@@ -147,8 +154,6 @@ class IndexManager:
         else:
             raise ValueError(f"Unsupported index type: {index.__class__.__name__}")
 
-        
-
     def load_index(self, path: str) -> BaseIndex:
         config_path = os.path.join(path, "config.json")
         if not os.path.exists(config_path):
@@ -167,6 +172,13 @@ class IndexManager:
             vectors = self.storage.load_vectors(os.path.join(path, "vectors.npy"))
             index._vectors_array = vectors
             index.ids = ids or list(range(len(vectors)))
+            
+            # Load metadata if it exists
+            meta_path = os.path.join(path, "metadata.json")
+            if os.path.exists(meta_path):
+                index.metadata = self.storage.load_vector_metadata(meta_path)
+            else:
+                index.metadata = {}
 
         elif index_type == "IVFIndex":
             # All IVF-specific params must be in config

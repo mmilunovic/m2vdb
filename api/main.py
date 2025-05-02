@@ -19,12 +19,15 @@ app = FastAPI(title="M2VDB API")
 
 # Initialize vector database with OpenAI's embedding dimension (1536 for text-embedding-3-small)
 DB_PATH = "data/vector_db"
+os.makedirs(DB_PATH, exist_ok=True)  # Ensure directory exists
+
 try:
     # Try to load existing database
     db = V3cT0rDaTaBas3(
         storage_path=DB_PATH,
         load_existing=True
     )
+    print(f"Loaded existing database with {len(db.index.ids)} vectors")
 except FileNotFoundError:
     # Create new database if none exists
     db = V3cT0rDaTaBas3(
@@ -33,6 +36,9 @@ except FileNotFoundError:
         storage_path=DB_PATH,
         metric='cosine'
     )
+    # Save the initial empty database to ensure all required files are created
+    db.save()
+    print("Created new database")
 
 class TextInput(BaseModel):
     text: str
@@ -91,11 +97,12 @@ async def search_text(input_data: SearchInput):
     # Validate k parameter
     if input_data.k <= 0:
         raise HTTPException(status_code=400, detail="k must be greater than 0")
-    if input_data.k > len(db.index.ids):
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Requested k={input_data.k} is larger than the number of vectors in the index ({len(db.index.ids)})"
-        )
+    
+    # Adjust k if it's larger than available vectors
+    adjusted_k = min(input_data.k, len(db.index.ids))
+    notification = None
+    if adjusted_k < input_data.k:
+        notification = f"Requested k={input_data.k} was larger than available vectors ({len(db.index.ids)}). Adjusted to k={adjusted_k}"
     
     # Get embedding for the query
     query_vector = await get_embedding(input_data.query)
@@ -103,7 +110,7 @@ async def search_text(input_data: SearchInput):
     # Search for similar vectors
     similar_ids, scores = db.index.search(
         queries=query_vector.reshape(1, -1),  # Reshape to (1, dim)
-        k=input_data.k
+        k=adjusted_k
     )
     
     # Prepare results
@@ -122,7 +129,8 @@ async def search_text(input_data: SearchInput):
         "results": results,
         "stats": {
             "total_vectors_searched": len(db.index.ids),
-            "k": input_data.k,
+            "k": adjusted_k,
             "metric": db.index.metric
-        }
+        },
+        "notification": notification
     } 
