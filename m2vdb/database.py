@@ -101,19 +101,20 @@ class V3cT0rDaTaBas3:
         Returns:
             List of results with IDs, distances, and metadata
         """
-        # Get nearest neighbor IDs from index
-        result_ids = self.index.search(queries, k=k)
+        # Get nearest neighbor IDs and scores from index
+        result_ids, scores = self.index.search(queries, k=k)
         
         # Format results with metadata
         results = []
-        for query_results in result_ids:
+        for query_results, query_scores in zip(result_ids, scores):
             query_formatted = []
-            for id_val in query_results:
+            for id_val, score in zip(query_results, query_scores):
                 # If we have metadata for this ID, include it
                 metadata = self.metadata[id_val] if id_val < len(self.metadata) else {}
                 query_formatted.append({
-                    "id": id_val,
-                    "metadata": metadata
+                    "id": int(id_val),
+                    "metadata": metadata,
+                    "score": float(score)
                 })
             results.append(query_formatted)
             
@@ -132,7 +133,7 @@ class V3cT0rDaTaBas3:
         
         # Save metadata separately
         metadata_path = f"{self.storage_path}/metadata.json"
-        self.storage_manager.storage.save_metadata(self.metadata, metadata_path)
+        self.storage_manager.storage.save_vector_metadata(self.metadata, metadata_path)
            
             
     def load(self) -> None:
@@ -149,6 +150,6 @@ class V3cT0rDaTaBas3:
         # Try to load metadata if it exists
         metadata_path = f"{self.storage_path}/metadata.json"
         if os.path.exists(metadata_path):
-            self.metadata = self.storage_manager.storage.load_metadata(metadata_path)
+            self.metadata = self.storage_manager.storage.load_vector_metadata(metadata_path)
         else:
             self.metadata = []

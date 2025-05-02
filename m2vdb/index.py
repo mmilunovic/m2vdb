@@ -42,7 +42,7 @@ class BaseIndex(ABC):
         self,
         queries: np.ndarray,
         k: int = 10
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Search for k nearest neighbors"""
         pass
 
@@ -69,13 +69,19 @@ class BruteForceIndex(BaseIndex):
         self._vectors_array = np.zeros((0, dim), dtype=np.float32)
         self.ids = []
 
-    def add(self, vecs: np.ndarray, ids: Optional[List[int]] = None) -> None:
+    def add(
+        self,
+        vecs: np.ndarray,
+        ids: Optional[List[int]] = None,
+        metadata: Optional[Dict[int, Dict]] = None
+    ) -> None:
         """
         Add vectors to the index
         
         Args:
             vecs: Vectors to add (n x dim)
             ids: Optional list of IDs for the vectors
+            metadata: Optional dict mapping vector IDs to metadata dicts
         """
         vecs = np.asarray(vecs, dtype=np.float32)
         if vecs.ndim != 2 or vecs.shape[1] != self.dim:
@@ -95,7 +101,11 @@ class BruteForceIndex(BaseIndex):
         self._vectors_array = new_array
         self.ids.extend(ids)
 
-    def search(self, queries: np.ndarray, k: int = 10) -> np.ndarray:
+        # Add metadata if provided
+        if metadata:
+            self.metadata.update(metadata)
+
+    def search(self, queries: np.ndarray, k: int = 10) -> tuple[np.ndarray, np.ndarray]:
         """
         Search for k nearest neighbors
         
@@ -103,14 +113,16 @@ class BruteForceIndex(BaseIndex):
             queries: Query vectors (n x dim)
             k: Number of nearest neighbors to return
         Returns:
-            Array of indices to nearest neighbors (n x k)
+            Tuple of (indices, scores) where:
+            - indices: Array of indices to nearest neighbors (n x k)
+            - scores: Array of similarity scores (n x k)
         """
         queries = np.asarray(queries, dtype=np.float32)
         if queries.ndim != 2 or queries.shape[1] != self.dim:
             raise ValueError(f"Expected queries of shape (n, {self.dim}), got {queries.shape}")
             
         if len(self.ids) == 0:
-            return np.zeros((len(queries), k), dtype=np.int64)
+            return np.zeros((len(queries), k), dtype=np.int64), np.zeros((len(queries), k), dtype=np.float32)
             
         # Compute distances efficiently using optimized distance function
         dists = self._metric_fn(queries, self._vectors_array)
@@ -123,8 +135,11 @@ class BruteForceIndex(BaseIndex):
         rows = np.arange(len(queries))[:, None]
         idx = idx[rows, np.argsort(dists[rows, idx])]
         
+        # Get corresponding scores
+        scores = np.take_along_axis(dists, idx, axis=1)
+        
         # Convert to array for faster indexing
-        return np.array(self.ids)[idx]
+        return np.array(self.ids)[idx], scores
 
 class IVFIndex(BaseIndex):
     """
@@ -221,13 +236,13 @@ class IVFIndex(BaseIndex):
 
         self.ids.extend(ids)
 
-    def search(self, queries: np.ndarray, k: int = 10) -> np.ndarray:
+    def search(self, queries: np.ndarray, k: int = 10) -> tuple[np.ndarray, np.ndarray]:
         queries = np.asarray(queries, dtype=np.float32)
         if queries.ndim != 2 or queries.shape[1] != self.dim:
             raise ValueError(f"Expected queries of shape (n, {self.dim}), got {queries.shape}")
         
         if self.centroids is None or not self.inverted_lists:
-            return np.zeros((len(queries), k), dtype=np.int64)
+            return np.zeros((len(queries), k), dtype=np.int64), np.zeros((len(queries), k), dtype=np.float32)
 
         results = []
         
@@ -268,11 +283,11 @@ class IVFIndex(BaseIndex):
             
             results.append(candidate_ids[top_k_sorted].tolist())
 
-        return np.array(results, dtype=np.int64)
+        return np.array(results, dtype=np.int64), np.array(results, dtype=np.float32)
 
     def search_with_metadata(self, queries: np.ndarray, k: int = 10):
-        ids = self.search(queries, k)
-        return ids, [[self.metadata.get(i) for i in row] for row in ids]
+        ids, scores = self.search(queries, k)
+        return ids, scores, [[self.metadata.get(i) for i in row] for row in ids]
 
 class PQIndex(BaseIndex):
     """Product Quantization (PQ) index for compressed nearest neighbor search."""
@@ -317,13 +332,13 @@ class PQIndex(BaseIndex):
         if metadata:
             self.metadata.update(metadata)
 
-    def search(self, queries: np.ndarray, k: int = 10) -> np.ndarray:
+    def search(self, queries: np.ndarray, k: int = 10) -> tuple[np.ndarray, np.ndarray]:
         queries = np.asarray(queries, dtype=np.float32)
         if queries.ndim != 2 or queries.shape[1] != self.dim:
             raise ValueError(f"Expected queries of shape (n, {self.dim}), got {queries.shape}")
 
         if self.codes is None or len(self.ids) == 0:
-            return np.zeros((len(queries), k), dtype=np.int64)
+            return np.zeros((len(queries), k), dtype=np.int64), np.zeros((len(queries), k), dtype=np.float32)
 
         n_queries = queries.shape[0]
         n_db = self.codes.shape[0]
@@ -354,10 +369,8 @@ class PQIndex(BaseIndex):
         rows = np.arange(n_queries)[:, None]
         sorted_top_k_idx = top_k_idx[rows, np.argsort(dists[rows, top_k_idx], axis=1)]
 
-        return np.array(self.ids)[sorted_top_k_idx]
-
-
+        return np.array(self.ids)[sorted_top_k_idx], dists[rows, sorted_top_k_idx]
 
     def search_with_metadata(self, queries: np.ndarray, k: int = 10):
-        ids = self.search(queries, k)
-        return ids, [[self.metadata.get(i) for i in row] for row in ids]
+        ids, scores = self.search(queries, k)
+        return ids, scores, [[self.metadata.get(i) for i in row] for row in ids]

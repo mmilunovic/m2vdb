@@ -78,14 +78,15 @@ class FileStorage(BaseStorage):
         return {int(k): v for k, v in raw.items()}
 
     # Vector metadata: vector_id (int) → Dict[str, Any]
-    def save_vector_metadata(self, metadata: Dict[int, Dict], path: str) -> None:
-        with open(path, "w") as f:
-            json.dump({str(k): v for k, v in metadata.items()}, f)
-
-    def load_vector_metadata(self, path: str) -> Dict[int, Dict]:
-        with open(path) as f:
-            raw = json.load(f)
-        return {int(k): v for k, v in raw.items()}
+    def save_vector_metadata(self, metadata: List[Dict[str, Any]], path: str) -> None:
+        """Save vector metadata to a JSON file"""
+        with open(path, 'w') as f:
+            json.dump(metadata, f)
+            
+    def load_vector_metadata(self, path: str) -> List[Dict[str, Any]]:
+        """Load vector metadata from a JSON file"""
+        with open(path, 'r') as f:
+            return json.load(f)
 
 class IndexManager:
     """Manager class for saving and loading indexes"""
