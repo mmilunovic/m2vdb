@@ -177,4 +177,65 @@ async def get_vectors():
             "dimension": db.dim,
             "metric": db.index.metric
         }
+    }
+
+@app.get("/neighbors/{vector_id}")
+async def get_neighbors(vector_id: int, k: int = 5):
+    """Get k nearest neighbors for a specific vector.
+    
+    Args:
+        vector_id: ID of the vector to find neighbors for
+        k: Number of nearest neighbors to return (default: 10)
+    """
+    if not db.index.ids:
+        raise HTTPException(status_code=400, detail="No vectors in database")
+    
+    # Validate vector_id
+    if vector_id < 0 or vector_id >= len(db.index.ids):
+        raise HTTPException(status_code=400, detail=f"Invalid vector ID: {vector_id}")
+    
+    # Validate k parameter
+    if k <= 0:
+        raise HTTPException(status_code=400, detail="k must be greater than 0")
+    
+    # Adjust k if it's larger than available vectors
+    adjusted_k = min(k, len(db.index.ids) - 1)  # -1 because we'll remove the vector itself
+    notification = None
+    if adjusted_k < k:
+        notification = f"Requested k={k} was larger than available vectors ({len(db.index.ids)}). Adjusted to k={adjusted_k}"
+    
+    # Get the vector
+    vector = db.index._vectors_array[vector_id].reshape(1, -1)
+    
+    # Search for similar vectors
+    similar_ids, scores = db.index.search(
+        queries=vector,
+        k=adjusted_k + 1  # +1 because the vector will be its own nearest neighbor
+    )
+    
+    # Remove the vector itself from results
+    mask = similar_ids[0] != vector_id
+    similar_ids = similar_ids[0][mask]
+    scores = scores[0][mask]
+    
+    # Prepare results
+    neighbors = []
+    for idx, score in zip(similar_ids, scores):
+        metadata = db.metadata[idx]
+        neighbors.append({
+            "id": int(idx),
+            "text": metadata.get("text", ""),
+            "metadata": {k: v for k, v in metadata.items() if k != "text"},
+            "distance": float(score)
+        })
+    
+    return {
+        "vector_id": vector_id,
+        "neighbors": neighbors,
+        "stats": {
+            "total_vectors_searched": len(db.index.ids),
+            "k": adjusted_k,
+            "metric": db.index.metric
+        },
+        "notification": notification
     } 

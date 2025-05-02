@@ -14,10 +14,21 @@ interface VectorData {
   };
 }
 
+interface NeighborData {
+  id: number;
+  distance: number;
+  text: string;
+  metadata: {
+    source: string;
+    category: string;
+  };
+}
+
 const VectorVisualization: React.FC = () => {
   const plotRef = useRef<HTMLDivElement>(null);
   const [vectors, setVectors] = useState<VectorData[]>([]);
   const [selectedVector, setSelectedVector] = useState<VectorData | null>(null);
+  const [neighbors, setNeighbors] = useState<NeighborData[]>([]);
   const plotInitialized = useRef(false);
 
   useEffect(() => {
@@ -189,98 +200,260 @@ const VectorVisualization: React.FC = () => {
     }
   }, [selectedVector]);
 
+  // Add new effect to fetch neighbors when a vector is selected
+  useEffect(() => {
+    const fetchNeighbors = async () => {
+      if (!selectedVector) {
+        setNeighbors([]);
+        return;
+      }
+
+      try {
+        const response = await axios.get(`http://localhost:8000/neighbors/${selectedVector.id}`);
+        setNeighbors(response.data.neighbors || []);
+      } catch (error) {
+        console.error('Error fetching neighbors:', error);
+        setNeighbors([]);
+      }
+    };
+
+    fetchNeighbors();
+  }, [selectedVector]);
+
   return (
     <div style={{ 
       display: 'flex', 
       width: '100%', 
       height: '100vh',
-      backgroundColor: '#ffffff'
+      backgroundColor: '#ffffff',
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
       <div 
         ref={plotRef} 
         style={{ 
           width: selectedVector ? '70%' : '100%',
           height: '100vh',
-          border: '1px solid #e0e0e0',
-          borderRadius: '8px',
+          border: 'none',
+          borderRadius: '0',
           overflow: 'hidden',
-          transition: 'width 0.3s ease'
+          transition: 'width 0.3s ease',
+          boxShadow: selectedVector ? '0 0 0 1px rgba(0, 0, 0, 0.1)' : 'none'
         }} 
       />
       {selectedVector && (
         <div style={{
           width: '30%',
-          padding: '20px',
-          borderLeft: '1px solid #e0e0e0',
-          backgroundColor: '#fafafa',
+          padding: '32px',
+          backgroundColor: '#ffffff',
           overflowY: 'auto',
-          color: '#000000'  // Set default text color to black
+          color: '#37352f',
+          borderLeft: '1px solid rgba(0, 0, 0, 0.1)'
         }}>
-          <h2 style={{ color: '#000000', marginBottom: '20px' }}>Vector Details</h2>
-          <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ color: '#000000' }}>ID: {selectedVector.id}</h3>
-          </div>
-          <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ color: '#000000' }}>Text</h3>
+          <div style={{ marginBottom: '32px' }}>
             <div style={{ 
-              backgroundColor: '#fff', 
-              padding: '10px', 
-              borderRadius: '4px',
-              maxHeight: '200px',
-              overflowY: 'auto',
-              border: '1px solid #e0e0e0'
+              fontSize: '32px',
+              fontWeight: '700',
+              color: '#37352f',
+              marginBottom: '16px',
+              fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace'
             }}>
-              <pre style={{ 
-                margin: 0, 
-                whiteSpace: 'pre-wrap',
-                color: '#000000',
-                fontFamily: 'inherit'
+              #{selectedVector.id}
+            </div>
+            <div style={{ 
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
+              <div style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '14px',
+                color: '#787774'
               }}>
-                {selectedVector.text}
-              </pre>
+                <span>🏷️ Category:</span>
+                <span style={{ 
+                  backgroundColor: '#f1f1ef',
+                  padding: '2px 8px',
+                  borderRadius: '3px',
+                  color: '#37352f'
+                }}>
+                  {selectedVector.metadata.category}
+                </span>
+              </div>
+              <div style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '14px',
+                color: '#787774'
+              }}>
+                <span>📚 Source:</span>
+                <span style={{ 
+                  backgroundColor: '#f1f1ef',
+                  padding: '2px 8px',
+                  borderRadius: '3px',
+                  color: '#37352f'
+                }}>
+                  {selectedVector.metadata.source}
+                </span>
+              </div>
             </div>
           </div>
-          <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ color: '#000000' }}>Metadata</h3>
+
+          <div style={{ marginBottom: '32px' }}>
             <div style={{ 
-              backgroundColor: '#fff', 
-              padding: '10px', 
-              borderRadius: '4px',
-              border: '1px solid #e0e0e0'
+              fontSize: '14px',
+              color: '#787774',
+              marginBottom: '8px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
             }}>
-              <div style={{ marginBottom: '8px', color: '#000000' }}>
-                <strong>Source:</strong> {selectedVector.metadata.source}
-              </div>
-              <div style={{ marginBottom: '8px', color: '#000000' }}>
-                <strong>Category:</strong> {selectedVector.metadata.category}
-              </div>
-              {Object.entries(selectedVector.metadata)
-                .filter(([key]) => !['source', 'category'].includes(key))
-                .map(([key, value]) => (
-                  <div key={key} style={{ marginBottom: '8px', color: '#000000' }}>
-                    <strong>{key}:</strong> {JSON.stringify(value)}
-                  </div>
-                ))
-              }
+              <span>📝</span> Content
+            </div>
+            <div style={{ 
+              backgroundColor: '#f7f6f3', 
+              padding: '16px', 
+              borderRadius: '4px',
+              fontSize: '14px',
+              lineHeight: '1.5',
+              color: '#37352f'
+            }}>
+              {selectedVector.text}
             </div>
           </div>
+
           <div>
-            <h3 style={{ color: '#000000' }}>Vector Values</h3>
             <div style={{ 
-              backgroundColor: '#fff', 
-              padding: '10px', 
-              borderRadius: '4px',
-              maxHeight: '200px',
-              overflowY: 'auto',
-              border: '1px solid #e0e0e0'
+              fontSize: '14px',
+              color: '#787774',
+              marginBottom: '8px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
             }}>
-              <pre style={{ 
-                margin: 0,
-                color: '#000000',
-                fontFamily: 'inherit'
+              <span>🔢</span> Vector Values
+            </div>
+            <div style={{ 
+              backgroundColor: '#f7f6f3', 
+              padding: '16px', 
+              borderRadius: '4px',
+              fontSize: '14px',
+              lineHeight: '1.5',
+              color: '#37352f',
+              fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace'
+            }}>
+              <div style={{ marginBottom: '8px', color: '#787774' }}>
+                Dimension: {selectedVector.vector.length}
+              </div>
+              <div style={{ 
+                backgroundColor: '#ffffff',
+                padding: '12px',
+                borderRadius: '3px',
+                border: '1px solid rgba(0, 0, 0, 0.1)'
               }}>
-                {JSON.stringify(selectedVector.vector, null, 2)}
-              </pre>
+                [{selectedVector.vector.slice(0, 3).map(v => v.toFixed(4)).join(', ')} ... {selectedVector.vector.slice(-2).map(v => v.toFixed(4)).join(', ')}]
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '32px' }}>
+            <div style={{ 
+              fontSize: '14px',
+              color: '#787774',
+              marginBottom: '8px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <span>🔍</span> Nearest Neighbors
+            </div>
+            <div style={{ 
+              backgroundColor: '#f7f6f3', 
+              padding: '16px', 
+              borderRadius: '4px',
+              fontSize: '14px',
+              lineHeight: '1.5',
+              color: '#37352f'
+            }}>
+              {neighbors.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {neighbors.map((neighbor, index) => (
+                    <div 
+                      key={neighbor.id}
+                      style={{
+                        backgroundColor: '#ffffff',
+                        padding: '12px',
+                        borderRadius: '3px',
+                        border: '1px solid rgba(0, 0, 0, 0.1)'
+                      }}
+                    >
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '8px'
+                      }}>
+                        <div style={{ 
+                          fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace',
+                          fontWeight: '600'
+                        }}>
+                          #{neighbor.id}
+                        </div>
+                        <div style={{ 
+                          fontSize: '12px',
+                          color: '#787774',
+                          backgroundColor: '#f1f1ef',
+                          padding: '2px 8px',
+                          borderRadius: '3px'
+                        }}>
+                          {neighbor.distance.toFixed(4)}
+                        </div>
+                      </div>
+                      <div style={{ 
+                        fontSize: '13px',
+                        color: '#37352f',
+                        marginBottom: '8px'
+                      }}>
+                        {neighbor.text}
+                      </div>
+                      <div style={{ 
+                        display: 'flex',
+                        gap: '8px',
+                        fontSize: '12px'
+                      }}>
+                        <span style={{ 
+                          backgroundColor: '#f1f1ef',
+                          padding: '2px 8px',
+                          borderRadius: '3px',
+                          color: '#787774'
+                        }}>
+                          {neighbor.metadata.category}
+                        </span>
+                        <span style={{ 
+                          backgroundColor: '#f1f1ef',
+                          padding: '2px 8px',
+                          borderRadius: '3px',
+                          color: '#787774'
+                        }}>
+                          {neighbor.metadata.source}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: '#787774', textAlign: 'center' }}>
+                  No neighbors found
+                </div>
+              )}
             </div>
           </div>
         </div>
