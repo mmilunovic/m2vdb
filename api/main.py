@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any
 import os
@@ -17,8 +18,17 @@ if not openai.api_key:
 
 app = FastAPI(title="M2VDB API")
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],  # Add your frontend URLs
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Initialize vector database with OpenAI's embedding dimension (1536 for text-embedding-3-small)
-DB_PATH = "data/vector_db"
+DB_PATH = "_data/vector_db"
 os.makedirs(DB_PATH, exist_ok=True)  # Ensure directory exists
 
 try:
@@ -65,7 +75,7 @@ async def add_text(input_data: TextInput):
     # Get embedding for the text
     vector = await get_embedding(input_data.text)
     
-    # Add vector to database
+    # Add vector to databasew
     db.add(
         vectors=vector.reshape(1, -1),  # Reshape to (1, dim)
         metadata_list=[{
@@ -133,4 +143,38 @@ async def search_text(input_data: SearchInput):
             "metric": db.index.metric
         },
         "notification": notification
+    }
+
+@app.get("/vectors")
+async def get_vectors():
+    """Get all vectors and their metadata from the database."""
+    if not db.index.ids:
+        return {
+            "vectors": [],
+            "stats": {
+                "total_vectors": 0,
+                "dimension": db.dim,
+                "metric": db.index.metric
+            }
+        }
+    
+    # Get all vectors and metadata
+    vectors = []
+    for idx in range(len(db.index.ids)):
+        vector = db.index._vectors_array[idx]
+        metadata = db.metadata[idx]
+        vectors.append({
+            "id": int(idx),
+            "text": metadata.get("text", ""),
+            "metadata": {k: v for k, v in metadata.items() if k != "text"},
+            "vector": vector.tolist()
+        })
+    
+    return {
+        "vectors": vectors,
+        "stats": {
+            "total_vectors": len(db.index.ids),
+            "dimension": db.dim,
+            "metric": db.index.metric
+        }
     } 
