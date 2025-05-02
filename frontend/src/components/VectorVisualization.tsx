@@ -29,6 +29,7 @@ const VectorVisualization: React.FC = () => {
   const [vectors, setVectors] = useState<VectorData[]>([]);
   const [selectedVector, setSelectedVector] = useState<VectorData | null>(null);
   const [neighbors, setNeighbors] = useState<NeighborData[]>([]);
+  const [isNeighborsExpanded, setIsNeighborsExpanded] = useState(true);
   const plotInitialized = useRef(false);
 
   useEffect(() => {
@@ -326,9 +327,9 @@ const VectorVisualization: React.FC = () => {
             </div>
           </div>
 
-          <div>
+          <div style={{ marginBottom: '48px' }}>
             <div style={{ 
-              fontSize: '14px',
+              fontSize: '13px',
               color: '#787774',
               marginBottom: '8px',
               textTransform: 'uppercase',
@@ -343,7 +344,7 @@ const VectorVisualization: React.FC = () => {
               backgroundColor: '#f7f6f3', 
               padding: '16px', 
               borderRadius: '4px',
-              fontSize: '14px',
+              fontSize: '13px',
               lineHeight: '1.5',
               color: '#37352f',
               fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace'
@@ -363,25 +364,40 @@ const VectorVisualization: React.FC = () => {
           </div>
 
           <div style={{ marginBottom: '32px' }}>
-            <div style={{ 
-              fontSize: '14px',
-              color: '#787774',
-              marginBottom: '8px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
+            <div 
+              style={{ 
+                fontSize: '13px',
+                color: '#787774',
+                marginBottom: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}
+              onClick={() => setIsNeighborsExpanded(!isNeighborsExpanded)}
+            >
               <span>🔍</span> Nearest Neighbors
+              <span style={{ 
+                marginLeft: 'auto',
+                transition: 'transform 0.2s ease',
+                transform: isNeighborsExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
+              }}>
+                ▼
+              </span>
             </div>
             <div style={{ 
               backgroundColor: '#f7f6f3', 
-              padding: '16px', 
               borderRadius: '4px',
-              fontSize: '14px',
+              fontSize: '13px',
               lineHeight: '1.5',
-              color: '#37352f'
+              color: '#37352f',
+              maxHeight: isNeighborsExpanded ? '1000px' : '0',
+              overflow: 'hidden',
+              transition: 'max-height 0.3s ease, padding 0.3s ease',
+              padding: isNeighborsExpanded ? '16px' : '0 16px'
             }}>
               {neighbors.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -403,12 +419,13 @@ const VectorVisualization: React.FC = () => {
                       }}>
                         <div style={{ 
                           fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace',
-                          fontWeight: '600'
+                          fontWeight: '600',
+                          fontSize: '13px'
                         }}>
                           #{neighbor.id}
                         </div>
                         <div style={{ 
-                          fontSize: '12px',
+                          fontSize: '11px',
                           color: '#787774',
                           backgroundColor: '#f1f1ef',
                           padding: '2px 8px',
@@ -418,7 +435,7 @@ const VectorVisualization: React.FC = () => {
                         </div>
                       </div>
                       <div style={{ 
-                        fontSize: '13px',
+                        fontSize: '12px',
                         color: '#37352f',
                         marginBottom: '8px'
                       }}>
@@ -427,7 +444,7 @@ const VectorVisualization: React.FC = () => {
                       <div style={{ 
                         display: 'flex',
                         gap: '8px',
-                        fontSize: '12px'
+                        fontSize: '11px'
                       }}>
                         <span style={{ 
                           backgroundColor: '#f1f1ef',
