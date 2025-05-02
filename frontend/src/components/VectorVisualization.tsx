@@ -5,20 +5,25 @@ import type { Data, Layout } from 'plotly.js';
 
 interface VectorData {
   id: number;
+  text: string;  // Changed from optional to required since we know it exists
   vector: number[];
-  metadata: Record<string, any>;
+  metadata: {
+    source: string;
+    category: string;
+    [key: string]: any;  // Allow for additional metadata fields
+  };
 }
 
 const VectorVisualization: React.FC = () => {
   const plotRef = useRef<HTMLDivElement>(null);
   const [vectors, setVectors] = useState<VectorData[]>([]);
+  const [selectedVector, setSelectedVector] = useState<VectorData | null>(null);
 
   useEffect(() => {
     const fetchVectors = async () => {
       try {
         const response = await axios.get('http://localhost:8000/vectors');
         console.log('Raw response data:', response.data);
-        // Assuming the response has a 'vectors' field containing the array
         const vectorsData = response.data.vectors || response.data;
         console.log('Processed vectors data:', vectorsData);
         setVectors(Array.isArray(vectorsData) ? vectorsData : []);
@@ -124,14 +129,30 @@ const VectorVisualization: React.FC = () => {
           zaxis: { title: 'PC3' }
         },
         margin: { l: 0, r: 0, b: 0, t: 40 },
-        width: window.innerWidth,
+        width: selectedVector ? window.innerWidth * 0.7 : window.innerWidth,
         height: window.innerHeight
       };
 
-      Plotly.newPlot(plotRef.current, data, layout, {
-        responsive: true,
-        displayModeBar: true
-      });
+      const plotElement = plotRef.current;
+      if (plotElement) {
+        Plotly.newPlot(plotElement, data, layout, {
+          responsive: true,
+          displayModeBar: true
+        });
+
+        // Add click handler using the correct Plotly event binding
+        (plotElement as any).on('plotly_click', (eventData: any) => {
+          console.log('Plot clicked:', eventData);
+          if (eventData && eventData.points && eventData.points[0]) {
+            const point = eventData.points[0];
+            const pointIndex = point.pointNumber;  // Use pointNumber instead of pointIndex
+            console.log('Selected point index:', pointIndex);
+            console.log('Selected vector:', vectors[pointIndex]);
+            setSelectedVector(vectors[pointIndex]);
+          }
+        });
+      }
+
     } catch (error) {
       console.error('Error during visualization:', error);
     }
@@ -141,20 +162,105 @@ const VectorVisualization: React.FC = () => {
         Plotly.purge(plotRef.current);
       }
     };
-  }, [vectors]);
+  }, [vectors, selectedVector]);
 
   return (
-    <div 
-      ref={plotRef} 
-      style={{ 
-        width: '100%', 
-        height: '100vh',
-        border: '1px solid #e0e0e0',
-        borderRadius: '8px',
-        overflow: 'hidden',
-        backgroundColor: '#ffffff'
-      }} 
-    />
+    <div style={{ 
+      display: 'flex', 
+      width: '100%', 
+      height: '100vh',
+      backgroundColor: '#ffffff'
+    }}>
+      <div 
+        ref={plotRef} 
+        style={{ 
+          width: selectedVector ? '70%' : '100%',
+          height: '100vh',
+          border: '1px solid #e0e0e0',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          transition: 'width 0.3s ease'
+        }} 
+      />
+      {selectedVector && (
+        <div style={{
+          width: '30%',
+          padding: '20px',
+          borderLeft: '1px solid #e0e0e0',
+          backgroundColor: '#fafafa',
+          overflowY: 'auto',
+          color: '#000000'  // Set default text color to black
+        }}>
+          <h2 style={{ color: '#000000', marginBottom: '20px' }}>Vector Details</h2>
+          <div style={{ marginBottom: '20px' }}>
+            <h3 style={{ color: '#000000' }}>ID: {selectedVector.id}</h3>
+          </div>
+          <div style={{ marginBottom: '20px' }}>
+            <h3 style={{ color: '#000000' }}>Text</h3>
+            <div style={{ 
+              backgroundColor: '#fff', 
+              padding: '10px', 
+              borderRadius: '4px',
+              maxHeight: '200px',
+              overflowY: 'auto',
+              border: '1px solid #e0e0e0'
+            }}>
+              <pre style={{ 
+                margin: 0, 
+                whiteSpace: 'pre-wrap',
+                color: '#000000',
+                fontFamily: 'inherit'
+              }}>
+                {selectedVector.text}
+              </pre>
+            </div>
+          </div>
+          <div style={{ marginBottom: '20px' }}>
+            <h3 style={{ color: '#000000' }}>Metadata</h3>
+            <div style={{ 
+              backgroundColor: '#fff', 
+              padding: '10px', 
+              borderRadius: '4px',
+              border: '1px solid #e0e0e0'
+            }}>
+              <div style={{ marginBottom: '8px', color: '#000000' }}>
+                <strong>Source:</strong> {selectedVector.metadata.source}
+              </div>
+              <div style={{ marginBottom: '8px', color: '#000000' }}>
+                <strong>Category:</strong> {selectedVector.metadata.category}
+              </div>
+              {Object.entries(selectedVector.metadata)
+                .filter(([key]) => !['source', 'category'].includes(key))
+                .map(([key, value]) => (
+                  <div key={key} style={{ marginBottom: '8px', color: '#000000' }}>
+                    <strong>{key}:</strong> {JSON.stringify(value)}
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+          <div>
+            <h3 style={{ color: '#000000' }}>Vector Values</h3>
+            <div style={{ 
+              backgroundColor: '#fff', 
+              padding: '10px', 
+              borderRadius: '4px',
+              maxHeight: '200px',
+              overflowY: 'auto',
+              border: '1px solid #e0e0e0'
+            }}>
+              <pre style={{ 
+                margin: 0,
+                color: '#000000',
+                fontFamily: 'inherit'
+              }}>
+                {JSON.stringify(selectedVector.vector, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
