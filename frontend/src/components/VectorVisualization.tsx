@@ -18,6 +18,7 @@ const VectorVisualization: React.FC = () => {
   const plotRef = useRef<HTMLDivElement>(null);
   const [vectors, setVectors] = useState<VectorData[]>([]);
   const [selectedVector, setSelectedVector] = useState<VectorData | null>(null);
+  const plotInitialized = useRef(false);
 
   useEffect(() => {
     const fetchVectors = async () => {
@@ -126,31 +127,42 @@ const VectorVisualization: React.FC = () => {
           aspectmode: 'cube',
           xaxis: { title: 'PC1' },
           yaxis: { title: 'PC2' },
-          zaxis: { title: 'PC3' }
+          zaxis: { title: 'PC3' },
+          camera: {
+            eye: { x: 1.5, y: 1.5, z: 1.5 },
+            center: { x: 0, y: 0, z: 0 }
+          }
         },
         margin: { l: 0, r: 0, b: 0, t: 40 },
-        width: selectedVector ? window.innerWidth * 0.7 : window.innerWidth,
-        height: window.innerHeight
+        width: window.innerWidth,
+        height: window.innerHeight,
+        uirevision: 'constant'
       };
 
       const plotElement = plotRef.current;
       if (plotElement) {
-        Plotly.newPlot(plotElement, data, layout, {
-          responsive: true,
-          displayModeBar: true
-        });
+        if (!plotInitialized.current) {
+          Plotly.newPlot(plotElement, data, layout, {
+            responsive: true,
+            displayModeBar: true
+          });
+          plotInitialized.current = true;
 
-        // Add click handler using the correct Plotly event binding
-        (plotElement as any).on('plotly_click', (eventData: any) => {
-          console.log('Plot clicked:', eventData);
-          if (eventData && eventData.points && eventData.points[0]) {
-            const point = eventData.points[0];
-            const pointIndex = point.pointNumber;  // Use pointNumber instead of pointIndex
-            console.log('Selected point index:', pointIndex);
-            console.log('Selected vector:', vectors[pointIndex]);
-            setSelectedVector(vectors[pointIndex]);
-          }
-        });
+          // Add click handler
+          (plotElement as any).on('plotly_click', (eventData: any) => {
+            if (eventData && eventData.points && eventData.points[0]) {
+              const point = eventData.points[0];
+              const pointIndex = point.pointNumber;
+              setSelectedVector(vectors[pointIndex]);
+            }
+          });
+        } else {
+          // Update only the data
+          Plotly.newPlot(plotElement, data, layout, {
+            responsive: true,
+            displayModeBar: true
+          });
+        }
       }
 
     } catch (error) {
@@ -160,9 +172,22 @@ const VectorVisualization: React.FC = () => {
     return () => {
       if (plotRef.current) {
         Plotly.purge(plotRef.current);
+        plotInitialized.current = false;
       }
     };
-  }, [vectors, selectedVector]);
+  }, [vectors]);
+
+  // Handle container width changes separately
+  useEffect(() => {
+    if (plotRef.current && plotInitialized.current) {
+      const width = selectedVector ? window.innerWidth * 0.7 : window.innerWidth;
+      const layout = {
+        width,
+        uirevision: 'constant'
+      };
+      (plotRef.current as any).style.width = `${width}px`;
+    }
+  }, [selectedVector]);
 
   return (
     <div style={{ 
