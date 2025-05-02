@@ -24,10 +24,20 @@ interface NeighborData {
   };
 }
 
-const VectorVisualization: React.FC = () => {
+interface VectorVisualizationProps {
+  vectors: VectorData[];
+  setVectors: React.Dispatch<React.SetStateAction<VectorData[]>>;
+  selectedVector: VectorData | null;
+  setSelectedVector: React.Dispatch<React.SetStateAction<VectorData | null>>;
+}
+
+const VectorVisualization: React.FC<VectorVisualizationProps> = ({
+  vectors,
+  setVectors,
+  selectedVector,
+  setSelectedVector,
+}) => {
   const plotRef = useRef<HTMLDivElement>(null);
-  const [vectors, setVectors] = useState<VectorData[]>([]);
-  const [selectedVector, setSelectedVector] = useState<VectorData | null>(null);
   const [neighbors, setNeighbors] = useState<NeighborData[]>([]);
   const [isNeighborsExpanded, setIsNeighborsExpanded] = useState(true);
   const plotInitialized = useRef(false);
@@ -304,7 +314,7 @@ const VectorVisualization: React.FC = () => {
 
           <div style={{ marginBottom: '32px' }}>
             <div style={{ 
-              fontSize: '14px',
+              fontSize: '13px',
               color: '#787774',
               marginBottom: '8px',
               textTransform: 'uppercase',
@@ -319,7 +329,7 @@ const VectorVisualization: React.FC = () => {
               backgroundColor: '#f7f6f3', 
               padding: '16px', 
               borderRadius: '4px',
-              fontSize: '14px',
+              fontSize: '13px', 
               lineHeight: '1.5',
               color: '#37352f'
             }}>
