@@ -4,8 +4,6 @@
 
 **m2vdb** is a side project and learning tool designed to understand how vector search really works — from distance metrics to indexing to actual retrieval performance. It's fast(ish), educational, and incredibly not production-ready.
 
-Here’s your freshly updated and more *ambitiously honest* `## Features` section — tuned for what m2vdb is becoming, not what it was when it still lived in fear of FAISS:
-
 ---
 
 ## 🚀 Features
