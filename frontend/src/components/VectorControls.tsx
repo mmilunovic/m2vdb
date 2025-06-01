@@ -1,7 +1,15 @@
 import React, { useState } from 'react';
 
 interface VectorControlsProps {
-  onAddVector: (text: string, metadata: { category: string; source: string }) => void;
+  onAddVector: (text: string, metadata: { 
+    id: string;
+    name: string;
+    category: string;
+    subcategory: string;
+    brand: string;
+    price_usd: number | null;
+    source: string;
+  }) => void;
   onSearch: (query: string) => void;
 }
 
@@ -13,7 +21,12 @@ const VectorControls: React.FC<VectorControlsProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [metadata, setMetadata] = useState({
+    id: '',
+    name: '',
     category: '',
+    subcategory: '',
+    brand: '',
+    price_usd: null as number | null,
     source: ''
   });
   const [showMetadata, setShowMetadata] = useState(false);
@@ -24,7 +37,15 @@ const VectorControls: React.FC<VectorControlsProps> = ({
     try {
       await onAddVector(newDocument, metadata);
       setNewDocument('');
-      setMetadata({ category: '', source: '' });
+      setMetadata({ 
+        id: '', 
+        name: '', 
+        category: '', 
+        subcategory: '', 
+        brand: '', 
+        price_usd: null, 
+        source: '' 
+      });
       setShowMetadata(false);
     } catch (error) {
       console.error('Error adding document:', error);
@@ -183,9 +204,89 @@ const VectorControls: React.FC<VectorControlsProps> = ({
             }}>
               <input
                 type="text"
+                value={metadata.id}
+                onChange={e => setMetadata(prev => ({ ...prev, id: e.target.value }))}
+                placeholder="ID (e.g., SKU-1001)"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  backgroundColor: '#fff',
+                  color: '#37352f',
+                  height: '32px',
+                }}
+              />
+              <input
+                type="text"
+                value={metadata.name}
+                onChange={e => setMetadata(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Name (e.g., Product Name)"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  backgroundColor: '#fff',
+                  color: '#37352f',
+                  height: '32px',
+                }}
+              />
+              <input
+                type="text"
                 value={metadata.category}
                 onChange={e => setMetadata(prev => ({ ...prev, category: e.target.value }))}
-                placeholder="Category (e.g., note, article, code)"
+                placeholder="Category (e.g., Electronics)"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  backgroundColor: '#fff',
+                  color: '#37352f',
+                  height: '32px',
+                }}
+              />
+              <input
+                type="text"
+                value={metadata.subcategory}
+                onChange={e => setMetadata(prev => ({ ...prev, subcategory: e.target.value }))}
+                placeholder="Subcategory (e.g., Headphones)"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  backgroundColor: '#fff',
+                  color: '#37352f',
+                  height: '32px',
+                }}
+              />
+              <input
+                type="text"
+                value={metadata.brand}
+                onChange={e => setMetadata(prev => ({ ...prev, brand: e.target.value }))}
+                placeholder="Brand (e.g., Apple)"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  backgroundColor: '#fff',
+                  color: '#37352f',
+                  height: '32px',
+                }}
+              />
+              <input
+                type="number"
+                value={metadata.price_usd || ''}
+                onChange={e => setMetadata(prev => ({ ...prev, price_usd: e.target.value ? parseFloat(e.target.value) : null }))}
+                placeholder="Price USD (e.g., 99.99)"
                 style={{
                   width: '100%',
                   padding: '8px 12px',

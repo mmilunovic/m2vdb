@@ -5,12 +5,16 @@ import type { Data, Layout } from 'plotly.js';
 
 interface VectorData {
   id: number;
-  text: string;  // Changed from optional to required since we know it exists
+  text: string;
   vector: number[];
   metadata: {
-    source: string;
+    id: string;
+    name: string;
     category: string;
-    [key: string]: any;  // Allow for additional metadata fields
+    subcategory: string;
+    brand: string;
+    price_usd: number | null;
+    source: string;
   };
 }
 
@@ -19,8 +23,13 @@ interface NeighborData {
   distance: number;
   text: string;
   metadata: {
-    source: string;
+    id: string;
+    name: string;
     category: string;
+    subcategory: string;
+    brand: string;
+    price_usd: number | null;
+    source: string;
   };
 }
 
@@ -29,8 +38,13 @@ interface SearchResult {
   text: string;
   similarity_score: number;
   metadata: {
-    source: string;
+    id: string;
+    name: string;
     category: string;
+    subcategory: string;
+    brand: string;
+    price_usd: number | null;
+    source: string;
   };
 }
 
@@ -61,10 +75,8 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
   useEffect(() => {
     const fetchVectors = async () => {
       try {
-        const response = await axios.get('http://localhost:8000/vectors');
-        console.log('Raw response data:', response.data);
-        const vectorsData = response.data.vectors || response.data;
-        console.log('Processed vectors data:', vectorsData);
+        const response = await axios.get<{ vectors: VectorData[] }>('http://localhost:8000/vectors');
+        const vectorsData = response.data.vectors || (response.data as unknown as VectorData[]);
         setVectors(Array.isArray(vectorsData) ? vectorsData : []);
       } catch (error) {
         console.error('Error fetching vectors:', error);
@@ -236,7 +248,7 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
       }
 
       try {
-        const response = await axios.get(`http://localhost:8000/neighbors/${selectedVector.id}`);
+        const response = await axios.get<{ neighbors: NeighborData[] }>(`http://localhost:8000/neighbors/${selectedVector.id}`);
         setNeighbors(response.data.neighbors || []);
       } catch (error) {
         console.error('Error fetching neighbors:', error);
@@ -338,13 +350,30 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
                   marginBottom: '16px',
                   fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace'
                 }}>
-                  #{selectedVector.id}
+                  {selectedVector.metadata.id}
                 </div>
                 <div style={{ 
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '8px'
                 }}>
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '14px',
+                    color: '#787774'
+                  }}>
+                    <span>📦 Name:</span>
+                    <span style={{ 
+                      backgroundColor: '#f1f1ef',
+                      padding: '2px 8px',
+                      borderRadius: '3px',
+                      color: '#37352f'
+                    }}>
+                      {selectedVector.metadata.name}
+                    </span>
+                  </div>
                   <div style={{ 
                     display: 'flex',
                     alignItems: 'center',
@@ -362,6 +391,59 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
                       {selectedVector.metadata.category}
                     </span>
                   </div>
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '14px',
+                    color: '#787774'
+                  }}>
+                    <span>📑 Subcategory:</span>
+                    <span style={{ 
+                      backgroundColor: '#f1f1ef',
+                      padding: '2px 8px',
+                      borderRadius: '3px',
+                      color: '#37352f'
+                    }}>
+                      {selectedVector.metadata.subcategory}
+                    </span>
+                  </div>
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '14px',
+                    color: '#787774'
+                  }}>
+                    <span>🏭 Brand:</span>
+                    <span style={{ 
+                      backgroundColor: '#f1f1ef',
+                      padding: '2px 8px',
+                      borderRadius: '3px',
+                      color: '#37352f'
+                    }}>
+                      {selectedVector.metadata.brand}
+                    </span>
+                  </div>
+                  {selectedVector.metadata.price_usd !== null && (
+                    <div style={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '14px',
+                      color: '#787774'
+                    }}>
+                      <span>💰 Price:</span>
+                      <span style={{ 
+                        backgroundColor: '#f1f1ef',
+                        padding: '2px 8px',
+                        borderRadius: '3px',
+                        color: '#37352f'
+                      }}>
+                        ${selectedVector.metadata.price_usd}
+                      </span>
+                    </div>
+                  )}
                   <div style={{ 
                     display: 'flex',
                     alignItems: 'center',
@@ -532,7 +614,7 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
                               borderRadius: '3px',
                               color: '#787774'
                             }}>
-                              {neighbor.metadata.category}
+                              🏷️ {neighbor.metadata.category}
                             </span>
                             <span style={{ 
                               backgroundColor: '#f1f1ef',
@@ -540,7 +622,33 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
                               borderRadius: '3px',
                               color: '#787774'
                             }}>
-                              {neighbor.metadata.source}
+                              📑 {neighbor.metadata.subcategory}
+                            </span>
+                            <span style={{ 
+                              backgroundColor: '#f1f1ef',
+                              padding: '2px 8px',
+                              borderRadius: '3px',
+                              color: '#787774'
+                            }}>
+                              🏭 {neighbor.metadata.brand}
+                            </span>
+                            {neighbor.metadata.price_usd !== null && (
+                              <span style={{ 
+                                backgroundColor: '#f1f1ef',
+                                padding: '2px 8px',
+                                borderRadius: '3px',
+                                color: '#787774'
+                              }}>
+                                💰 ${neighbor.metadata.price_usd}
+                              </span>
+                            )}
+                            <span style={{ 
+                              backgroundColor: '#f1f1ef',
+                              padding: '2px 8px',
+                              borderRadius: '3px',
+                              color: '#787774'
+                            }}>
+                              📚 {neighbor.metadata.source}
                             </span>
                           </div>
                         </div>
@@ -691,7 +799,7 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
                           borderRadius: '3px',
                           color: '#787774'
                         }}>
-                          {result.metadata.category}
+                          🏷️ {result.metadata.category}
                         </span>
                         <span style={{ 
                           backgroundColor: '#ffffff',
@@ -699,7 +807,33 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
                           borderRadius: '3px',
                           color: '#787774'
                         }}>
-                          {result.metadata.source}
+                          📑 {result.metadata.subcategory}
+                        </span>
+                        <span style={{ 
+                          backgroundColor: '#ffffff',
+                          padding: '2px 8px',
+                          borderRadius: '3px',
+                          color: '#787774'
+                        }}>
+                          🏭 {result.metadata.brand}
+                        </span>
+                        {result.metadata.price_usd !== null && (
+                          <span style={{ 
+                            backgroundColor: '#ffffff',
+                            padding: '2px 8px',
+                            borderRadius: '3px',
+                            color: '#787774'
+                          }}>
+                            💰 ${result.metadata.price_usd}
+                          </span>
+                        )}
+                        <span style={{ 
+                          backgroundColor: '#ffffff',
+                          padding: '2px 8px',
+                          borderRadius: '3px',
+                          color: '#787774'
+                        }}>
+                          📚 {result.metadata.source}
                         </span>
                       </div>
                     </div>

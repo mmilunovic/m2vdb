@@ -30,7 +30,11 @@ async def main():
         metadata = {
             'id': product.get('id'),
             'name': product.get('name'),
-            'price': product.get('price')
+            'category': product.get('category'),
+            'subcategory': product.get('subcategory'),
+            'brand': product.get('brand'),
+            'price_usd': product.get('price_usd'),
+            'source': product.get('source')
         }
         
         # Add to database via API
