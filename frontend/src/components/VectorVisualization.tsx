@@ -172,7 +172,6 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
       }];
 
       const layout: Partial<Layout> = {
-        title: 'Vector Visualization (PCA)',
         scene: {
           aspectmode: 'cube',
           xaxis: { title: 'PC1' },
@@ -267,6 +266,94 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
       backgroundColor: '#ffffff',
       fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        zIndex: 1000
+      }}>
+        <div style={{
+          position: 'relative',
+          display: 'inline-block'
+        }}>
+          <button
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '6px 14px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#37352f',
+              fontSize: '20px',
+              fontWeight: 600,
+              fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            }}
+            onMouseOver={e => {
+              const dropdown = e.currentTarget.nextElementSibling as HTMLElement;
+              if (dropdown) dropdown.style.display = 'block';
+            }}
+            onMouseOut={e => {
+              const dropdown = e.currentTarget.nextElementSibling as HTMLElement;
+              if (dropdown) dropdown.style.display = 'none';
+            }}
+          >
+            <span style={{ fontSize: '22px', transform: 'rotate(-90deg)' }}>▼</span>
+            <span>PCA Visualization <span style={{ fontStyle: 'italic', fontWeight: 400, fontSize: '16px' }}>(default)</span></span>
+          </button>
+          <div
+            style={{
+              display: 'none',
+              position: 'absolute',
+              top: '100%',
+              left: '0',
+              backgroundColor: '#ffffff',
+              border: '1px solid rgba(0, 0, 0, 0.1)',
+              borderRadius: '4px',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+              padding: '4px 0',
+              minWidth: '270px',
+              zIndex: 1001
+            }}
+            onMouseOver={e => e.currentTarget.style.display = 'block'}
+            onMouseOut={e => e.currentTarget.style.display = 'none'}
+          >
+            <div style={{
+              padding: '10px 18px',
+              fontSize: '18px',
+              color: '#37352f',
+              cursor: 'pointer',
+              backgroundColor: '#f1f1ef',
+              fontWeight: 600
+            }}>
+              PCA Visualization <span style={{ fontStyle: 'italic', fontWeight: 400, fontSize: '15px' }}>(default)</span>
+            </div>
+            <div style={{
+              padding: '10px 18px',
+              fontSize: '18px',
+              color: '#787774',
+              cursor: 'not-allowed',
+              fontWeight: 600
+            }}>
+              t-SNE Visualization <span style={{ fontStyle: 'italic', fontWeight: 400, fontSize: '15px' }}>(localish)</span>
+            </div>
+            <div style={{
+              padding: '10px 18px',
+              fontSize: '18px',
+              color: '#787774',
+              cursor: 'not-allowed',
+              fontWeight: 600
+            }}>
+              UMAP Visualization <span style={{ fontStyle: 'italic', fontWeight: 400, fontSize: '15px' }}>(golden!)</span>
+            </div>
+          </div>
+        </div>
+      </div>
       <div 
         ref={plotRef} 
         style={{ 
