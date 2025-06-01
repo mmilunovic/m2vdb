@@ -1,0 +1,122 @@
+[
+    {
+        "id": "SKU-1001",
+        "name": "AuroraSoft Memory-Foam Pillow",
+        "description": "A pressure-relieving memory-foam pillow infused with cooling gel beads. Medium firmness, removable bamboo-viscose cover, machine-washable.",
+        "category": "Home & Living",
+        "subcategory": "Bedding",
+        "brand": "AuroraSoft",
+    "price_usd": 39.99,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1002",
+    "name": "VoltEdge Wireless Noise-Cancelling Headphones",
+    "description": "Over-ear Bluetooth 5.3 headphones with adaptive ANC, 40-hour battery life, and quick-charge (5 min = 3 hrs play). Includes 3.5 mm cable for wired mode.",
+    "category": "Electronics",
+    "subcategory": "Audio",
+    "brand": "VoltEdge",
+    "price_usd": 129.95,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1003",
+    "name": "TrailBound Pro-Lite Hiking Backpack 38 L",
+    "description": "Ultralight (890 g) ripstop-nylon pack with ventilated back panel, hydration-bladder sleeve, and detachable rain cover. Fits torso lengths 46–55 cm.",
+    "category": "Sports & Outdoors",
+    "subcategory": "Backpacks",
+    "brand": "TrailBound",
+    "price_usd": 89.50,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1004",
+    "name": "EcoBrew Insulated Tumbler 600 ml",
+    "description": "Double-wall stainless-steel tumbler that keeps drinks hot 8 h / cold 12 h. Leak-proof flip lid, powder-coat finish, dishwasher-safe.",
+    "category": "Kitchen",
+    "subcategory": "Drinkware",
+    "brand": "EcoBrew",
+    "price_usd": 24.00,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1005",
+    "name": "PixelFlex 4K Action Camera",
+    "description": "4K@60 fps waterproof action cam (IPX8 30 m) with gyro stabilization, 155° FOV, voice control, and two rechargeable 1350 mAh batteries.",
+    "category": "Electronics",
+    "subcategory": "Cameras",
+    "brand": "PixelFlex",
+    "price_usd": 199.00,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1006",
+    "name": "PureGlow Vitamin C Serum 30 ml",
+    "description": "20 % stabilized L-ascorbic acid with hyaluronic acid and niacinamide. Brightens skin tone and reduces fine lines in 4 weeks (dermatologist tested).",
+    "category": "Beauty",
+    "subcategory": "Skin Care",
+    "brand": "PureGlow",
+    "price_usd": 27.99,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1007",
+    "name": "ComfyStride Men’s Merino-Blend Crew Socks (3-Pack)",
+    "description": "Cushioned heel-toe, 65 % ethically sourced merino wool, odor-resistant, arch support band. Sizes EU 41-46.",
+    "category": "Apparel",
+    "subcategory": "Socks",
+    "brand": "ComfyStride",
+    "price_usd": 18.50,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1008",
+    "name": "ZenDesk Compact Standing Desk (80 × 60 cm)",
+    "description": "Electric height-adjustable desk (70–120 cm) with dual-motor lift, memory presets, and cable-management tray. Bamboo top, matte-black frame.",
+    "category": "Office",
+    "subcategory": "Furniture",
+    "brand": "ZenDesk",
+    "price_usd": 329.00,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1009",
+    "name": "ChefMaster Cast-Iron Skillet 25 cm",
+    "description": "Pre-seasoned cast-iron skillet ideal for stove, oven, or campfire. Superior heat retention and even searing; lifetime durability.",
+    "category": "Kitchen",
+    "subcategory": "Cookware",
+    "brand": "ChefMaster",
+    "price_usd": 34.90,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1010",
+    "name": "SkyLite Mini Drone with 4K Camera",
+    "description": "249 g foldable drone, GPS+GLONASS positioning, 31-min flight time, 10 km HD video transmission, obstacle avoidance, follow-me mode.",
+    "category": "Electronics",
+    "subcategory": "Drones",
+    "brand": "SkyLite",
+    "price_usd": 459.00,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1011",
+    "name": "FreshLeaf Organic Matcha 30 g",
+    "description": "Ceremonial-grade Uji matcha, stone-ground, shade-grown 20 days, packed in nitrogen-flushed tin for maximum freshness.",
+    "category": "Grocery",
+    "subcategory": "Tea",
+    "brand": "FreshLeaf",
+    "price_usd": 14.75,
+    "source": "catalog"
+  },
+  {
+    "id": "SKU-1012",
+    "name": "LunaKids Wooden Balance Bike",
+    "description": "Birch-ply frame, adjustable seat (30–38 cm), puncture-proof EVA tires. Teaches toddlers (18 m+) balance and coordination without pedals.",
+    "category": "Kids",
+    "subcategory": "Ride-Ons",
+    "brand": "LunaKids",
+    "price_usd": 59.99,
+    "source": "catalog"
+  }]
+  

@@ -28,7 +28,8 @@ app.add_middleware(
 )
 
 # Initialize vector database with OpenAI's embedding dimension (1536 for text-embedding-3-small)
-DB_PATH = "_data/vector_db"
+# DB_PATH = "_data/vector_db"
+DB_PATH = "_data/product_descriptions"
 os.makedirs(DB_PATH, exist_ok=True)  # Ensure directory exists
 
 try:
