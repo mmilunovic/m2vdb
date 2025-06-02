@@ -1,7 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import axios from 'axios';
 import * as Plotly from 'plotly.js-dist-min';
 import type { Data, Layout } from 'plotly.js';
+import VectorDetailsPanel from './VectorDetailsPanel';
+import SearchResultsPanel from './SearchResultsPanel';
 
 interface VectorData {
   id: number;
@@ -68,9 +70,8 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
   searchQuery,
 }) => {
   const plotRef = useRef<HTMLDivElement>(null);
-  const [neighbors, setNeighbors] = useState<NeighborData[]>([]);
-  const [isNeighborsExpanded, setIsNeighborsExpanded] = useState(true);
   const plotInitialized = useRef(false);
+  const searchResultsRef = useRef<SearchResult[]>(searchResults);
 
   useEffect(() => {
     const fetchVectors = async () => {
@@ -93,6 +94,7 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
     }
 
     console.log('Preparing to visualize vectors:', vectors);
+    console.log('Current search results:', searchResults);
 
     // Simple PCA implementation
     const performPCA = (vectors: number[][], dimensions: number = 3) => {
@@ -155,21 +157,58 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
       const pcaVectors = performPCA(vectorArrays);
       console.log('PCA result:', pcaVectors);
 
-      const data: Data[] = [{
-        type: 'scatter3d',
-        mode: 'markers',
-        x: pcaVectors.map(v => v[0]),
-        y: pcaVectors.map(v => v[1]),
-        z: pcaVectors.map(v => v[2]),
-        marker: {
-          size: 8,
-          color: vectors.map((_, i) => i),
-          colorscale: 'Viridis',
-          opacity: 0.8
+      // Split vectors into returned and non-returned
+      const returnedIndices = searchResults.map(result => 
+        vectors.findIndex(v => v.id === result.id)
+      ).filter(idx => idx !== -1);
+
+      console.log('Current search results:', searchResults);
+      console.log('Returned indices:', returnedIndices);
+
+      const data: Data[] = [
+        // Non-returned vectors (transparent)
+        {
+          type: 'scatter3d',
+          mode: 'markers',
+          x: pcaVectors.map((v, i) => !returnedIndices.includes(i) ? v[0] : null).filter(x => x !== null),
+          y: pcaVectors.map((v, i) => !returnedIndices.includes(i) ? v[1] : null).filter(y => y !== null),
+          z: pcaVectors.map((v, i) => !returnedIndices.includes(i) ? v[2] : null).filter(z => z !== null),
+          marker: {
+            size: 8,
+            color: vectors.map((_, i) => !returnedIndices.includes(i) ? i : null).filter(c => c !== null),
+            colorscale: 'Viridis',
+            opacity: searchResults.length > 0 ? 0.1 : 0.8
+          },
+          text: vectors.map((v, i) => !returnedIndices.includes(i) ? `ID: ${v.id}` : null).filter(t => t !== null),
+          hoverinfo: 'text',
+          name: 'non-returned',
+          customdata: vectors
+            .map((_, i) => !returnedIndices.includes(i) ? i : null)
+            .filter((d): d is number => d !== null)
         },
-        text: vectors.map(v => `ID: ${v.id}`),
-        hoverinfo: 'text'
-      }];
+        // Returned vectors (full opacity)
+        {
+          type: 'scatter3d',
+          mode: 'markers',
+          x: pcaVectors.map((v, i) => returnedIndices.includes(i) ? v[0] : null).filter(x => x !== null),
+          y: pcaVectors.map((v, i) => returnedIndices.includes(i) ? v[1] : null).filter(y => y !== null),
+          z: pcaVectors.map((v, i) => returnedIndices.includes(i) ? v[2] : null).filter(z => z !== null),
+          marker: {
+            size: 8,
+            color: vectors.map((_, i) => returnedIndices.includes(i) ? i : null).filter(c => c !== null),
+            colorscale: 'Viridis',
+            opacity: 0.8
+          },
+          text: vectors.map((v, i) => returnedIndices.includes(i) ? `ID: ${v.id}` : null).filter(t => t !== null),
+          hoverinfo: 'text',
+          name: 'returned',
+          customdata: vectors
+            .map((_, i) => returnedIndices.includes(i) ? i : null)
+            .filter((d): d is number => d !== null)
+        }
+      ];
+
+      console.log('Plot data:', data);
 
       const layout: Partial<Layout> = {
         scene: {
@@ -191,6 +230,8 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
       const plotElement = plotRef.current;
       if (plotElement) {
         if (!plotInitialized.current) {
+          console.log('Initializing plot...');
+          // Initial plot creation
           Plotly.newPlot(plotElement, data, layout, {
             responsive: true,
             displayModeBar: true
@@ -199,15 +240,43 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
 
           // Add click handler
           (plotElement as any).on('plotly_click', (eventData: any) => {
+            console.log('Plot clicked:', eventData);
             if (eventData && eventData.points && eventData.points[0]) {
               const point = eventData.points[0];
-              const pointIndex = point.pointNumber;
-              setSelectedVector(vectors[pointIndex]);
+              // Retrieve the original vector index that we stored in `customdata`
+              const originalIndex: number | undefined = point.customdata;
+
+              // Fallback to pointNumber (legacy behaviour) if for some reason customdata is undefined
+              const vectorIndex = (typeof originalIndex === 'number') ? originalIndex : point.pointNumber;
+
+              const clickedVector = vectors[vectorIndex];
+              console.log('Clicked vector:', clickedVector);
+              
+              const currentResults = searchResultsRef.current;
+
+              if (currentResults.length > 0) {
+                const isReturnedVector = currentResults.some(result => result.id === clickedVector.id);
+                console.log('Is returned vector:', isReturnedVector);
+                if (!isReturnedVector) {
+                  console.log('Clearing search results because clicked blurred vector');
+                  // Only clear search results if clicking a blurred vector
+                  setSearchResults([]);
+                }
+              }
+              setSelectedVector(clickedVector);
             }
           });
         } else {
-          // Update only the data
-          Plotly.newPlot(plotElement, data, layout, {
+          console.log('Updating plot...');
+          // Preserve the current camera position before updating
+          const currentCamera = (plotElement as any)._fullLayout?.scene?.camera;
+
+          if (currentCamera) {
+            (layout.scene as any).camera = currentCamera;
+          }
+
+          // Use Plotly.react to update data/layout without reinitialising the scene
+          (Plotly as any).react(plotElement, data, layout as any, {
             responsive: true,
             displayModeBar: true
           });
@@ -218,13 +287,19 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
       console.error('Error during visualization:', error);
     }
 
+    // Do not purge here; we maintain the same plot instance across updates
+    return undefined;
+  }, [vectors, searchResults]);
+
+  // Purge the plot only when the component is unmounted
+  useEffect(() => {
     return () => {
       if (plotRef.current) {
         Plotly.purge(plotRef.current);
         plotInitialized.current = false;
       }
     };
-  }, [vectors]);
+  }, []);
 
   // Handle container width changes separately
   useEffect(() => {
@@ -238,25 +313,10 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
     }
   }, [selectedVector]);
 
-  // Add new effect to fetch neighbors when a vector is selected
+  // Update the ref whenever searchResults changes
   useEffect(() => {
-    const fetchNeighbors = async () => {
-      if (!selectedVector) {
-        setNeighbors([]);
-        return;
-      }
-
-      try {
-        const response = await axios.get<{ neighbors: NeighborData[] }>(`http://localhost:8000/neighbors/${selectedVector.id}`);
-        setNeighbors(response.data.neighbors || []);
-      } catch (error) {
-        console.error('Error fetching neighbors:', error);
-        setNeighbors([]);
-      }
-    };
-
-    fetchNeighbors();
-  }, [selectedVector]);
+    searchResultsRef.current = searchResults;
+  }, [searchResults]);
 
   return (
     <div style={{ 
@@ -369,567 +429,20 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
           top: 0
         }} 
       />
-      {(selectedVector || searchResults.length > 0) && (
-        <div style={{
-          width: '30%',
-          padding: '32px',
-          backgroundColor: '#ffffff',
-          overflowY: 'auto',
-          color: '#37352f',
-          borderLeft: '1px solid rgba(0, 0, 0, 0.1)',
-          position: 'fixed',
-          right: 0,
-          top: '92px',
-          height: 'calc(100vh - 92px)'
-        }}>
-          {selectedVector ? (
-            // Show selected vector info
-            <>
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '32px',
-              }}>
-                <div style={{ 
-                  fontSize: '24px',
-                  fontWeight: '600',
-                  color: '#37352f',
-                }}>
-                  Vector Details
-                </div>
-                <button
-                  onClick={() => setSelectedVector(null)}
-                  style={{
-                    width: '24px',
-                    height: '24px',
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    marginLeft: '8px',
-                    cursor: 'pointer',
-                    color: '#b3b3b1',
-                    borderRadius: '3px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '20px',
-                    transition: 'background-color 0.2s ease, color 0.2s ease',
-                  }}
-                  onMouseOver={e => {
-                    e.currentTarget.style.backgroundColor = '#f1f1ef';
-                    e.currentTarget.style.color = '#37352f';
-                  }}
-                  onMouseOut={e => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = '#b3b3b1';
-                  }}
-                  aria-label="Close details"
-                >
-                  ✕
-                </button>
-              </div>
-              <div style={{ marginBottom: '32px' }}>
-                <div style={{ 
-                  fontSize: '32px',
-                  fontWeight: '700',
-                  color: '#37352f',
-                  marginBottom: '16px',
-                  fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace'
-                }}>
-                  {selectedVector.metadata.id}
-                </div>
-                <div style={{ 
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px'
-                }}>
-                  <div style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '14px',
-                    color: '#787774'
-                  }}>
-                    <span>📦 Name:</span>
-                    <span style={{ 
-                      backgroundColor: '#f1f1ef',
-                      padding: '2px 8px',
-                      borderRadius: '3px',
-                      color: '#37352f'
-                    }}>
-                      {selectedVector.metadata.name}
-                    </span>
-                  </div>
-                  <div style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '14px',
-                    color: '#787774'
-                  }}>
-                    <span>🏷️ Category:</span>
-                    <span style={{ 
-                      backgroundColor: '#f1f1ef',
-                      padding: '2px 8px',
-                      borderRadius: '3px',
-                      color: '#37352f'
-                    }}>
-                      {selectedVector.metadata.category}
-                    </span>
-                  </div>
-                  <div style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '14px',
-                    color: '#787774'
-                  }}>
-                    <span>📑 Subcategory:</span>
-                    <span style={{ 
-                      backgroundColor: '#f1f1ef',
-                      padding: '2px 8px',
-                      borderRadius: '3px',
-                      color: '#37352f'
-                    }}>
-                      {selectedVector.metadata.subcategory}
-                    </span>
-                  </div>
-                  <div style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '14px',
-                    color: '#787774'
-                  }}>
-                    <span>🏭 Brand:</span>
-                    <span style={{ 
-                      backgroundColor: '#f1f1ef',
-                      padding: '2px 8px',
-                      borderRadius: '3px',
-                      color: '#37352f'
-                    }}>
-                      {selectedVector.metadata.brand}
-                    </span>
-                  </div>
-                  {selectedVector.metadata.price_usd !== null && (
-                    <div style={{ 
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      fontSize: '14px',
-                      color: '#787774'
-                    }}>
-                      <span>💰 Price:</span>
-                      <span style={{ 
-                        backgroundColor: '#f1f1ef',
-                        padding: '2px 8px',
-                        borderRadius: '3px',
-                        color: '#37352f'
-                      }}>
-                        ${selectedVector.metadata.price_usd}
-                      </span>
-                    </div>
-                  )}
-                  <div style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '14px',
-                    color: '#787774'
-                  }}>
-                    <span>📚 Source:</span>
-                    <span style={{ 
-                      backgroundColor: '#f1f1ef',
-                      padding: '2px 8px',
-                      borderRadius: '3px',
-                      color: '#37352f'
-                    }}>
-                      {selectedVector.metadata.source}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '32px' }}>
-                <div style={{ 
-                  fontSize: '13px',
-                  color: '#787774',
-                  marginBottom: '8px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <span>📝</span> Content
-                </div>
-                <div style={{ 
-                  backgroundColor: '#f7f6f3', 
-                  padding: '16px', 
-                  borderRadius: '4px',
-                  fontSize: '13px', 
-                  lineHeight: '1.5',
-                  color: '#37352f'
-                }}>
-                  {selectedVector.text}
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '48px' }}>
-                <div style={{ 
-                  fontSize: '13px',
-                  color: '#787774',
-                  marginBottom: '8px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <span>🔢</span> Vector Values
-                </div>
-                <div style={{ 
-                  backgroundColor: '#f7f6f3', 
-                  padding: '16px', 
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  lineHeight: '1.5',
-                  color: '#37352f',
-                  fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace'
-                }}>
-                  <div style={{ marginBottom: '8px', color: '#787774' }}>
-                    Dimension: {selectedVector.vector.length}
-                  </div>
-                  <div style={{ 
-                    backgroundColor: '#ffffff',
-                    padding: '12px',
-                    borderRadius: '3px',
-                    border: '1px solid rgba(0, 0, 0, 0.1)'
-                  }}>
-                    [{selectedVector.vector.slice(0, 3).map(v => v.toFixed(4)).join(', ')} ... {selectedVector.vector.slice(-2).map(v => v.toFixed(4)).join(', ')}]
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '32px' }}>
-                <div 
-                  style={{ 
-                    fontSize: '13px',
-                    color: '#787774',
-                    marginBottom: '8px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    userSelect: 'none'
-                  }}
-                  onClick={() => setIsNeighborsExpanded(!isNeighborsExpanded)}
-                >
-                  <span>🔍</span> Nearest Neighbors
-                  <span style={{ 
-                    marginLeft: 'auto',
-                    transition: 'transform 0.2s ease',
-                    transform: isNeighborsExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
-                  }}>
-                    ▼
-                  </span>
-                </div>
-                <div style={{ 
-                  backgroundColor: '#f7f6f3', 
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  lineHeight: '1.5',
-                  color: '#37352f',
-                  maxHeight: isNeighborsExpanded ? '1000px' : '0',
-                  overflow: 'hidden',
-                  transition: 'max-height 0.3s ease, padding 0.3s ease',
-                  padding: isNeighborsExpanded ? '16px' : '0 16px'
-                }}>
-                  {neighbors.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      {neighbors.map((neighbor, index) => (
-                        <div 
-                          key={neighbor.id}
-                          style={{
-                            backgroundColor: '#ffffff',
-                            padding: '12px',
-                            borderRadius: '3px',
-                            border: '1px solid rgba(0, 0, 0, 0.1)'
-                          }}
-                        >
-                          <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '8px'
-                          }}>
-                            <div style={{ 
-                              fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace',
-                              fontWeight: '600',
-                              fontSize: '13px'
-                            }}>
-                              #{neighbor.id}
-                            </div>
-                            <div style={{ 
-                              fontSize: '11px',
-                              color: '#787774',
-                              backgroundColor: '#f1f1ef',
-                              padding: '2px 8px',
-                              borderRadius: '3px'
-                            }}>
-                              {neighbor.distance.toFixed(4)}
-                            </div>
-                          </div>
-                          <div style={{ 
-                            fontSize: '12px',
-                            color: '#37352f',
-                            marginBottom: '8px'
-                          }}>
-                            {neighbor.text}
-                          </div>
-                          <div style={{ 
-                            display: 'flex',
-                            gap: '8px',
-                            fontSize: '11px'
-                          }}>
-                            <span style={{ 
-                              backgroundColor: '#f1f1ef',
-                              padding: '2px 8px',
-                              borderRadius: '3px',
-                              color: '#787774'
-                            }}>
-                              🏷️ {neighbor.metadata.category}
-                            </span>
-                            <span style={{ 
-                              backgroundColor: '#f1f1ef',
-                              padding: '2px 8px',
-                              borderRadius: '3px',
-                              color: '#787774'
-                            }}>
-                              📑 {neighbor.metadata.subcategory}
-                            </span>
-                            <span style={{ 
-                              backgroundColor: '#f1f1ef',
-                              padding: '2px 8px',
-                              borderRadius: '3px',
-                              color: '#787774'
-                            }}>
-                              🏭 {neighbor.metadata.brand}
-                            </span>
-                            {neighbor.metadata.price_usd !== null && (
-                              <span style={{ 
-                                backgroundColor: '#f1f1ef',
-                                padding: '2px 8px',
-                                borderRadius: '3px',
-                                color: '#787774'
-                              }}>
-                                💰 ${neighbor.metadata.price_usd}
-                              </span>
-                            )}
-                            <span style={{ 
-                              backgroundColor: '#f1f1ef',
-                              padding: '2px 8px',
-                              borderRadius: '3px',
-                              color: '#787774'
-                            }}>
-                              📚 {neighbor.metadata.source}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={{ color: '#787774', textAlign: 'center' }}>
-                      No neighbors found
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : (
-            // Show search results
-            <>
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '32px',
-              }}>
-                <div style={{ 
-                  fontSize: '24px',
-                  fontWeight: '600',
-                  color: '#37352f',
-                }}>
-                  Search Results
-                </div>
-                <button
-                  onClick={() => {
-                    setSelectedVector(null);
-                    setSearchResults([]);
-                  }}
-                  style={{
-                    width: '24px',
-                    height: '24px',
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    marginLeft: '8px',
-                    cursor: 'pointer',
-                    color: '#b3b3b1',
-                    borderRadius: '3px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '20px',
-                    transition: 'background-color 0.2s ease, color 0.2s ease',
-                  }}
-                  onMouseOver={e => {
-                    e.currentTarget.style.backgroundColor = '#f1f1ef';
-                    e.currentTarget.style.color = '#37352f';
-                  }}
-                  onMouseOut={e => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = '#b3b3b1';
-                  }}
-                  aria-label="Close search results"
-                >
-                  ✕
-                </button>
-              </div>
-              <div style={{ 
-                fontSize: '16px',
-                color: '#37352f',
-                marginBottom: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                <span>🔍</span>
-                <span style={{ fontWeight: '500' }}>Query:</span>
-                <span style={{ color: '#787774' }}>&quot;{searchQuery}&quot;</span>
-              </div>
-              <div style={{ marginBottom: '32px' }}>
-                <div style={{ 
-                  fontSize: '13px',
-                  color: '#787774',
-                  marginBottom: '8px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <span>📋</span> Results
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {searchResults.map((result) => (
-                    <div 
-                      key={result.id}
-                      style={{
-                        backgroundColor: '#f7f6f3',
-                        padding: '16px',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        transition: 'background-color 0.2s ease',
-                      }}
-                      onMouseOver={e => e.currentTarget.style.backgroundColor = '#f1f1ef'}
-                      onMouseOut={e => e.currentTarget.style.backgroundColor = '#f7f6f3'}
-                      onClick={() => {
-                        const vector = vectors.find(v => v.id === result.id);
-                        if (vector) {
-                          setSelectedVector(vector);
-                        }
-                      }}
-                    >
-                      <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '8px'
-                      }}>
-                        <div style={{ 
-                          fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace',
-                          fontWeight: '600',
-                          fontSize: '13px'
-                        }}>
-                          #{result.id}
-                        </div>
-                        <div style={{ 
-                          fontSize: '11px',
-                          color: '#787774',
-                          backgroundColor: '#ffffff',
-                          padding: '2px 8px',
-                          borderRadius: '3px'
-                        }}>
-                          {result.similarity_score.toFixed(4)}
-                        </div>
-                      </div>
-                      <div style={{ 
-                        fontSize: '13px',
-                        color: '#37352f',
-                        marginBottom: '8px',
-                        lineHeight: '1.5'
-                      }}>
-                        {result.text}
-                      </div>
-                      <div style={{ 
-                        display: 'flex',
-                        gap: '8px',
-                        fontSize: '11px'
-                      }}>
-                        <span style={{ 
-                          backgroundColor: '#ffffff',
-                          padding: '2px 8px',
-                          borderRadius: '3px',
-                          color: '#787774'
-                        }}>
-                          🏷️ {result.metadata.category}
-                        </span>
-                        <span style={{ 
-                          backgroundColor: '#ffffff',
-                          padding: '2px 8px',
-                          borderRadius: '3px',
-                          color: '#787774'
-                        }}>
-                          📑 {result.metadata.subcategory}
-                        </span>
-                        <span style={{ 
-                          backgroundColor: '#ffffff',
-                          padding: '2px 8px',
-                          borderRadius: '3px',
-                          color: '#787774'
-                        }}>
-                          🏭 {result.metadata.brand}
-                        </span>
-                        {result.metadata.price_usd !== null && (
-                          <span style={{ 
-                            backgroundColor: '#ffffff',
-                            padding: '2px 8px',
-                            borderRadius: '3px',
-                            color: '#787774'
-                          }}>
-                            💰 ${result.metadata.price_usd}
-                          </span>
-                        )}
-                        <span style={{ 
-                          backgroundColor: '#ffffff',
-                          padding: '2px 8px',
-                          borderRadius: '3px',
-                          color: '#787774'
-                        }}>
-                          📚 {result.metadata.source}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+      {selectedVector && (
+        <VectorDetailsPanel
+          selectedVector={selectedVector}
+          setSelectedVector={setSelectedVector}
+        />
+      )}
+      {!selectedVector && searchResults.length > 0 && (
+        <SearchResultsPanel
+          vectors={vectors}
+          searchResults={searchResults}
+          searchQuery={searchQuery}
+          setSelectedVector={setSelectedVector}
+          setSearchResults={setSearchResults}
+        />
       )}
     </div>
   );
