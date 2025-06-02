@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import * as Plotly from 'plotly.js-dist-min';
 import type { Data, Layout } from 'plotly.js';
+import { UMAP } from 'umap-js';
 import VectorDetailsPanel from './VectorDetailsPanel';
 import SearchResultsPanel from './SearchResultsPanel';
 
@@ -69,6 +70,8 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
   setSearchResults,
   searchQuery,
 }) => {
+  type VizMethod = 'pca' | 'umap';
+  const [vizMethod, setVizMethod] = useState<VizMethod>('pca');
   const plotRef = useRef<HTMLDivElement>(null);
   const plotInitialized = useRef(false);
   const searchResultsRef = useRef<SearchResult[]>(searchResults);
@@ -151,11 +154,25 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
       );
     };
 
+    // UMAP dimensionality reduction
+    const performUMAP = (vectors: number[][], dimensions: number = 3) => {
+      if (vectors.length === 0) return [];
+      const umap = new UMAP({ nComponents: dimensions });
+      // umap-js expects number[][] where rows are items.
+      const embedding: number[][] = umap.fit(vectors);
+      return embedding;
+    };
+
     try {
       const vectorArrays = vectors.map(v => v.vector);
-      console.log('Vector arrays for PCA:', vectorArrays);
-      const pcaVectors = performPCA(vectorArrays);
-      console.log('PCA result:', pcaVectors);
+      console.log(`Vector arrays for ${vizMethod.toUpperCase()}:`, vectorArrays);
+      let embeddedVectors: number[][] = [];
+      if (vizMethod === 'umap') {
+        embeddedVectors = performUMAP(vectorArrays);
+      } else {
+        embeddedVectors = performPCA(vectorArrays);
+      }
+      console.log(`${vizMethod.toUpperCase()} result:`, embeddedVectors);
 
       // Split vectors into returned and non-returned
       const returnedIndices = searchResults.map(result => 
@@ -170,9 +187,9 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
         {
           type: 'scatter3d',
           mode: 'markers',
-          x: pcaVectors.map((v, i) => !returnedIndices.includes(i) ? v[0] : null).filter(x => x !== null),
-          y: pcaVectors.map((v, i) => !returnedIndices.includes(i) ? v[1] : null).filter(y => y !== null),
-          z: pcaVectors.map((v, i) => !returnedIndices.includes(i) ? v[2] : null).filter(z => z !== null),
+          x: embeddedVectors.map((v, i) => !returnedIndices.includes(i) ? v[0] : null).filter(x => x !== null),
+          y: embeddedVectors.map((v, i) => !returnedIndices.includes(i) ? v[1] : null).filter(y => y !== null),
+          z: embeddedVectors.map((v, i) => !returnedIndices.includes(i) ? v[2] : null).filter(z => z !== null),
           marker: {
             size: 8,
             color: vectors.map((_, i) => !returnedIndices.includes(i) ? i : null).filter(c => c !== null),
@@ -190,9 +207,9 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
         {
           type: 'scatter3d',
           mode: 'markers',
-          x: pcaVectors.map((v, i) => returnedIndices.includes(i) ? v[0] : null).filter(x => x !== null),
-          y: pcaVectors.map((v, i) => returnedIndices.includes(i) ? v[1] : null).filter(y => y !== null),
-          z: pcaVectors.map((v, i) => returnedIndices.includes(i) ? v[2] : null).filter(z => z !== null),
+          x: embeddedVectors.map((v, i) => returnedIndices.includes(i) ? v[0] : null).filter(x => x !== null),
+          y: embeddedVectors.map((v, i) => returnedIndices.includes(i) ? v[1] : null).filter(y => y !== null),
+          z: embeddedVectors.map((v, i) => returnedIndices.includes(i) ? v[2] : null).filter(z => z !== null),
           marker: {
             size: 8,
             color: vectors.map((_, i) => returnedIndices.includes(i) ? i : null).filter(c => c !== null),
@@ -289,7 +306,7 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
 
     // Do not purge here; we maintain the same plot instance across updates
     return undefined;
-  }, [vectors, searchResults]);
+  }, [vectors, searchResults, vizMethod]);
 
   // Purge the plot only when the component is unmounted
   useEffect(() => {
@@ -364,7 +381,7 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
             }}
           >
             <span style={{ fontSize: '22px', transform: 'rotate(-90deg)' }}>▼</span>
-            <span>PCA Visualization <span style={{ fontStyle: 'italic', fontWeight: 400, fontSize: '16px' }}>(default)</span></span>
+            <span>{vizMethod.toUpperCase()} Visualization</span>
           </button>
           <div
             style={{
@@ -383,34 +400,27 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
             onMouseOver={e => e.currentTarget.style.display = 'block'}
             onMouseOut={e => e.currentTarget.style.display = 'none'}
           >
-            <div style={{
-              padding: '10px 18px',
-              fontSize: '18px',
-              color: '#37352f',
-              cursor: 'pointer',
-              backgroundColor: '#f1f1ef',
-              fontWeight: 600
-            }}>
-              PCA Visualization <span style={{ fontStyle: 'italic', fontWeight: 400, fontSize: '15px' }}>(default)</span>
-            </div>
-            <div style={{
-              padding: '10px 18px',
-              fontSize: '18px',
-              color: '#787774',
-              cursor: 'not-allowed',
-              fontWeight: 600
-            }}>
-              t-SNE Visualization <span style={{ fontStyle: 'italic', fontWeight: 400, fontSize: '15px' }}>(localish)</span>
-            </div>
-            <div style={{
-              padding: '10px 18px',
-              fontSize: '18px',
-              color: '#787774',
-              cursor: 'not-allowed',
-              fontWeight: 600
-            }}>
-              UMAP Visualization <span style={{ fontStyle: 'italic', fontWeight: 400, fontSize: '15px' }}>(golden!)</span>
-            </div>
+            {([
+              { key: 'pca', label: 'PCA' },
+              { key: 'umap', label: 'UMAP' },
+            ] as { key: VizMethod; label: string }[]).map(method => (
+              <div
+                key={method.key}
+                onClick={() => {
+                  setVizMethod(method.key);
+                }}
+                style={{
+                  padding: '10px 18px',
+                  fontSize: '18px',
+                  color: vizMethod === method.key ? '#37352f' : '#787774',
+                  cursor: 'pointer',
+                  backgroundColor: vizMethod === method.key ? '#f1f1ef' : '#ffffff',
+                  fontWeight: 600
+                }}
+              >
+                {method.label} Visualization {method.key === 'pca' && <span style={{ fontStyle: 'italic', fontWeight: 400, fontSize: '15px' }}>(default)</span>}
+              </div>
+            ))}
           </div>
         </div>
       </div>
