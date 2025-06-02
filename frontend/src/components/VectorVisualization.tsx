@@ -70,7 +70,7 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
   setSearchResults,
   searchQuery,
 }) => {
-  type VizMethod = 'pca' | 'umap';
+  type VizMethod = 'pca' | 'umap' | 'tsne';
   const [vizMethod, setVizMethod] = useState<VizMethod>('pca');
   const plotRef = useRef<HTMLDivElement>(null);
   const plotInitialized = useRef(false);
@@ -367,7 +367,7 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
               alignItems: 'center',
               gap: '8px',
               color: '#37352f',
-              fontSize: '20px',
+              fontSize: '12px',
               fontWeight: 600,
               fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
             }}
@@ -380,8 +380,12 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
               if (dropdown) dropdown.style.display = 'none';
             }}
           >
-            <span style={{ fontSize: '22px', transform: 'rotate(-90deg)' }}>▼</span>
-            <span>{vizMethod.toUpperCase()} Visualization</span>
+            <span style={{ fontSize: '18px', transform: 'rotate(-90deg)' }}>▼</span>
+            <span>
+              {vizMethod === 'pca' && 'PCA Visualization (default/global)'}
+              {vizMethod === 'umap' && 'UMAP Visualization (best of both worlds)'}
+              {vizMethod === 'tsne' && 't-SNE Visualization (local-ish)'}
+            </span>
           </button>
           <div
             style={{
@@ -401,8 +405,9 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
             onMouseOut={e => e.currentTarget.style.display = 'none'}
           >
             {([
-              { key: 'pca', label: 'PCA' },
-              { key: 'umap', label: 'UMAP' },
+              { key: 'pca', label: 'PCA Visualization (default/global)' },
+              { key: 'umap', label: 'UMAP Visualization (best of both worlds)' },
+              { key: 'tsne', label: 't-SNE Visualization (local-ish)' },
             ] as { key: VizMethod; label: string }[]).map(method => (
               <div
                 key={method.key}
@@ -411,14 +416,14 @@ const VectorVisualization: React.FC<VectorVisualizationProps> = ({
                 }}
                 style={{
                   padding: '10px 18px',
-                  fontSize: '18px',
+                  fontSize: '10px',
                   color: vizMethod === method.key ? '#37352f' : '#787774',
                   cursor: 'pointer',
                   backgroundColor: vizMethod === method.key ? '#f1f1ef' : '#ffffff',
                   fontWeight: 600
                 }}
               >
-                {method.label} Visualization {method.key === 'pca' && <span style={{ fontStyle: 'italic', fontWeight: 400, fontSize: '15px' }}>(default)</span>}
+                {method.label}
               </div>
             ))}
           </div>
