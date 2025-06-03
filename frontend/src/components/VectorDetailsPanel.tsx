@@ -61,6 +61,7 @@ const VectorDetailsPanel: React.FC<VectorDetailsPanelProps> = ({ selectedVector,
       style={{
         width: '30%',
         padding: '32px',
+        boxSizing: 'border-box',
         backgroundColor: '#ffffff',
         overflowY: 'auto',
         color: '#37352f',
