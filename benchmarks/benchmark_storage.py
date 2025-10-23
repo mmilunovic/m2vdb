@@ -1,10 +1,14 @@
 import numpy as np
 import os
-import time
 import json
-import psutil
+import os
+import time
+
 import humanize
-from m2vdb.database import V3cT0rDaTaBas3 as VectorDatabase
+import numpy as np
+import psutil
+
+from m2vdb.database import VectorDatabase
 
 def get_process_memory():
     """Get current process memory usage in bytes"""

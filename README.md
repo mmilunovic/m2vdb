@@ -75,14 +75,15 @@ pip install -r requirements.txt
 
 ```python
 import numpy as np
-from m2vdb.database import V3cT0rDaTaBas3
+from m2vdb.database import VectorDatabase
 
 # 1. Create a new vector database using Product Quantization (PQ) index
-db = V3cT0rDaTaBas3(
+db = VectorDatabase(
     dim=128,
     index_type="pq",
     storage_path="my_vector_db_pq",
-    index_params={"num_subspaces": 8, "centroids_per_subspace": 16}
+    num_subspaces=8,
+    centroids_per_subspace=16,
 )
 
 # 2. Add vectors with flexible metadata
@@ -102,7 +103,7 @@ for match in results[0]:
 db.save()
 
 # 5. Reload it later without retraining
-loaded_db = V3cT0rDaTaBas3(storage_path="my_vector_db_pq", load_existing=True)
+loaded_db = VectorDatabase(storage_path="my_vector_db_pq", load_existing=True)
 
 # 6. Search again on the loaded database
 new_results = loaded_db.search(queries=query, k=5)
