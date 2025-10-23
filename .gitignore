@@ -185,3 +185,6 @@ benchmarks/data/
 # Node dependencies from archived demos or experiments
 node_modules/
 **/node_modules/
+
+# Project planning
+plan.md
