@@ -181,3 +181,7 @@ cython_debug/
 
 # Benchmarks
 benchmarks/data/
+
+# Node dependencies from archived demos or experiments
+node_modules/
+**/node_modules/
