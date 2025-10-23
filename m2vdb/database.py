@@ -3,11 +3,11 @@
 from typing import List, Dict, Any, Optional
 import numpy as np
 import os
-from m2vdb.index import BruteForceIndex, IVFIndex
+from m2vdb.indexes import create_index, registered_indexes
 from m2vdb.storage import IndexManager, FileStorage
 
-class V3cT0rDaTaBas3:
-    """Vector database with support for exact and approximate nearest neighbor search"""
+class VectorDatabase:
+    """High-level facade that owns an index and optional metadata."""
     
     def __init__(self, dim: int = None, index_type: str = 'brute_force', 
                  storage_path: str = "data", load_existing: bool = False, **kwargs):
@@ -32,7 +32,7 @@ class V3cT0rDaTaBas3:
         self.index_type = index_type
         self.storage_path = storage_path
         self.metadata = []
-        
+
         # Initialize storage manager
         self.storage_manager = IndexManager(FileStorage())
         
@@ -44,13 +44,11 @@ class V3cT0rDaTaBas3:
                 raise ValueError("'dim' parameter is required when creating a new index")
                 
             self.dim = dim
-            # Create the appropriate index
-            if index_type == 'brute_force':
-                self.index = BruteForceIndex(dim=dim, **kwargs)
-            elif index_type == 'ivf':
-                self.index = IVFIndex(dim=dim, **kwargs)
-            else:
-                raise ValueError(f"Unknown index type: {index_type}")
+            if index_type not in registered_indexes():
+                raise ValueError(
+                    f"Unknown index type: {index_type}. Available: {', '.join(registered_indexes())}"
+                )
+            self.index = create_index(index_type, dim=dim, **kwargs)
 
     def add(self, vectors: np.ndarray, metadata_list: Optional[List[Dict[str, Any]]] = None, 
             ids: Optional[List[int]] = None) -> None:
@@ -146,10 +144,14 @@ class V3cT0rDaTaBas3:
         # Load index
         self.index = self.storage_manager.load_index(self.storage_path)
         self.dim = self.index.dim
-        
+
         # Try to load metadata if it exists
         metadata_path = f"{self.storage_path}/metadata.json"
         if os.path.exists(metadata_path):
             self.metadata = self.storage_manager.storage.load_vector_metadata(metadata_path)
         else:
             self.metadata = []
+
+
+# Backwards compatibility with the original whimsical name
+V3cT0rDaTaBas3 = VectorDatabase

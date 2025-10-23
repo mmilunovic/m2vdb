@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 import openai
 import numpy as np
-from m2vdb.database import V3cT0rDaTaBas3
+from m2vdb.database import VectorDatabase
 
 # Load environment variables
 load_dotenv()
@@ -41,14 +41,14 @@ os.makedirs(DB_PATH, exist_ok=True)  # Ensure directory exists
 
 try:
     # Try to load existing database
-    db = V3cT0rDaTaBas3(
+    db = VectorDatabase(
         storage_path=DB_PATH,
         load_existing=True
     )
     print(f"Loaded existing database with {len(db.index.ids)} vectors")
 except FileNotFoundError:
     # Create new database if none exists
-    db = V3cT0rDaTaBas3(
+    db = VectorDatabase(
         dim=1536,
         index_type='brute_force',
         storage_path=DB_PATH,

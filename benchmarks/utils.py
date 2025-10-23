@@ -66,6 +66,27 @@ class BenchmarkRunner:
         """Add a benchmark result"""
         self.results[method_name] = result_dict
 
+    def to_rows(self):
+        """Return the captured metrics as a list of dictionaries."""
+        return [
+            {"variant": method, **metrics}
+            for method, metrics in self.results.items()
+        ]
+
+    def to_markdown(self):
+        """Render results to a markdown table."""
+        if not self.results:
+            return ""
+
+        metrics = sorted({metric for entry in self.results.values() for metric in entry})
+        header = "| Variant | " + " | ".join(metrics) + " |\n"
+        separator = "|" + " --- |" * (len(metrics) + 1) + "\n"
+        rows = ""
+        for variant, values in self.results.items():
+            row_values = [str(values.get(metric, "")) for metric in metrics]
+            rows += "| " + variant + " | " + " | ".join(row_values) + " |\n"
+        return header + separator + rows
+
     def print_results(self):
         """Print benchmark results in a formatted table"""
         print(f"\n{self.name} Benchmark Results")
