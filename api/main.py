@@ -18,10 +18,17 @@ if not openai.api_key:
 
 app = FastAPI(title="M2VDB API")
 
-# Add CORS middleware
+# Configure CORS for API clients.
+# Allow callers specified in M2VDB_ALLOWED_ORIGINS env var or fall back to all origins
+_allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("M2VDB_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],  # Add your frontend URLs
+    allow_origins=_allowed_origins or ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

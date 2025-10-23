@@ -39,6 +39,10 @@ This project started during an internal Microsoft hackathon. I wanted to learn h
 - Performance benchmarking
 - Mild psychological unraveling
 
+## Archived experiments
+
+The experimental TypeScript visualization that previously lived at the repository root now lives in `archive/frontend-demo`. It remains available for reference, but it is no longer an active part of the project.
+
 
 ## 🔬 Benchmark Results
 
