@@ -1,379 +1,260 @@
-# m2vdb/index.py
+"""
+Core vector index implementations.
+"""
 
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict
-
 import numpy as np
-from sklearn.cluster import KMeans
-from collections import defaultdict
-
-from m2vdb.distance import euclidean_distance, cosine_similarity
-from m2vdb.quantization import ProductQuantizer
 
 
-class BaseIndex(ABC):
-    """Abstract base class for all vector indexes"""
-    def __init__(self, dim: int, metric: str = 'euclidean', **kwargs):
-        """
-        Initialize base index
-        
-        Args:
-            dim: Dimensionality of vectors
-            metric: Distance metric ('euclidean' or 'cosine')
-            **kwargs: Additional parameters for derived classes
-        """
-        self.dim = dim
-        self.metric = metric
-        self._metric_fn = euclidean_distance if metric == 'euclidean' else cosine_similarity
-        self.metadata = {}
-
+class Index(ABC):
+    """
+    Abstract base class for vector index implementations.
+    """
+    
     @abstractmethod
-    def add(
-        self,
-        vecs: np.ndarray,
-        ids: Optional[List[int]] = None,
-        metadata: Optional[Dict[int, Dict]] = None
-    ) -> None:
-        """Add vectors to the index"""
+    def build(self, vectors: np.ndarray, ids: List[str]) -> None:
+        """
+        Build the search index structure from a batch of vectors.
+        
+        This is typically called once after loading your initial dataset. For
+        algorithms like HNSW that have expensive index construction, this is
+        where that work happens. For brute force, this just stores the vectors.
+        
+        Args:
+            vectors: numpy array of shape (n, dim) containing all vectors
+            ids: list of string IDs corresponding to each vector
+        """
         pass
-
+    
     @abstractmethod
-    def search(
-        self,
-        queries: np.ndarray,
-        k: int = 10
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Search for k nearest neighbors"""
-        pass
-
-# TODO: Implement metadata for this
-class BruteForceIndex(BaseIndex):
-    """Exact nearest neighbor search using brute force"""
-    def __init__(self, dim: int, metric: str = 'euclidean', **kwargs):
+    def search(self, query: np.ndarray, k: int) -> List[tuple[str, float]]:
         """
-        Initialize brute force index
+        Search for k nearest neighbors of the query vector.
+        
+        The index searches its internal data structures and returns results
+        as ID-distance pairs. The IDs are the same string IDs that were passed
+        during build() or add().
         
         Args:
-            dim: Dimensionality of vectors
-            metric: Distance metric ('euclidean' or 'cosine')
-            **kwargs: Not used, but included for API consistency
-        """
-        super().__init__(dim, metric)
-        
-        # Check for unexpected parameters
-        if kwargs:
-            unexpected = ', '.join(kwargs.keys())
-            raise ValueError(f"Unexpected parameters for BruteForceIndex: {unexpected}")
+            query: query vector of shape (dim,)
+            k: number of nearest neighbors to return
             
-        # Store vectors directly in a numpy array for efficient computation
-        self._vectors_array = np.zeros((0, dim), dtype=np.float32)
-        self.ids = []
-
-    def add(
-        self,
-        vecs: np.ndarray,
-        ids: Optional[List[int]] = None,
-        metadata: Optional[Dict[int, Dict]] = None
-    ) -> None:
-        """
-        Add vectors to the index
-        
-        Args:
-            vecs: Vectors to add (n x dim)
-            ids: Optional list of IDs for the vectors
-            metadata: Optional dict mapping vector IDs to metadata dicts
-        """
-        vecs = np.asarray(vecs, dtype=np.float32)
-        if vecs.ndim != 2 or vecs.shape[1] != self.dim:
-            raise ValueError(f"Expected vectors of shape (n, {self.dim}), got {vecs.shape}")
-            
-        if ids is None:
-            ids = list(range(len(self.ids), len(self.ids) + len(vecs)))
-            
-        # Pre-allocate new array and copy data
-        new_size = len(self.ids) + len(vecs)
-        new_array = np.empty((new_size, self.dim), dtype=np.float32)
-        if len(self.ids) > 0:
-            new_array[:len(self.ids)] = self._vectors_array
-        new_array[len(self.ids):] = vecs
-        
-        # Update storage
-        self._vectors_array = new_array
-        self.ids.extend(ids)
-
-        # Add metadata if provided
-        if metadata:
-            self.metadata.update(metadata)
-
-    def search(self, queries: np.ndarray, k: int = 10) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Search for k nearest neighbors
-        
-        Args:
-            queries: Query vectors (n x dim)
-            k: Number of nearest neighbors to return
         Returns:
-            Tuple of (indices, scores) where:
-            - indices: Array of indices to nearest neighbors (n x k)
-            - scores: Array of similarity scores (n x k)
+            List of (id, distance) tuples sorted by distance (closest first)
         """
-        queries = np.asarray(queries, dtype=np.float32)
-        if queries.ndim != 2 or queries.shape[1] != self.dim:
-            raise ValueError(f"Expected queries of shape (n, {self.dim}), got {queries.shape}")
-            
-        if len(self.ids) == 0:
-            return np.zeros((len(queries), k), dtype=np.int64), np.zeros((len(queries), k), dtype=np.float32)
-            
-        # Compute distances efficiently using optimized distance function
-        dists = self._metric_fn(queries, self._vectors_array)
-        
-        # Adjust k if it's larger than available vectors
-        k = min(k, len(self.ids))
-        
-        # Get top k indices - use k-1 for argpartition when k equals array length
-        partition_k = k if k < len(self.ids) else k - 1
-        idx = np.argpartition(dists, partition_k, axis=1)[:, :k]
-        
-        # Sort the k neighbors by distance
-        rows = np.arange(len(queries))[:, None]
-        idx = idx[rows, np.argsort(dists[rows, idx])]
-        
-        # Get corresponding scores
-        scores = np.take_along_axis(dists, idx, axis=1)
-        
-        # Convert to array for faster indexing
-        return np.array(self.ids)[idx], scores
-
-class IVFIndex(BaseIndex):
-    """
-    Inverted File Index (IVF) for approximate nearest neighbor search.
-    """
-    def __init__(self, dim: int, metric: str = 'euclidean', **kwargs):
+        pass
+    
+    @abstractmethod
+    def add(self, id: str, vector: np.ndarray) -> None:
         """
-        Initialize IVF index.
-
+        Add a single vector to the index after initial build.
+        
+        This allows incremental updates to the index. Different algorithms
+        handle this with different efficiency:
+        - Brute force: O(1) append operation
+        - Product Quantization: need to quantize and add to codebook regions
+        - HNSW: need to insert into graph with link updates
+        
         Args:
-            dim: Dimensionality of vectors
-            metric: Distance metric ('euclidean' or 'cosine')
-            **kwargs:
-                n_clusters: Number of clusters (default=64)
-                n_probe: Number of clusters to search at query time (default=5)
-                random_seed: Random seed for clustering (default=1312)
+            id: unique string ID for this vector
+            vector: vector of shape (dim,) to add
         """
-        super().__init__(dim, metric)
-        self.n_clusters = kwargs.pop('n_clusters', 64)
-        self.n_probe = kwargs.pop('n_probe', 5)
-        self.random_seed = kwargs.pop('random_seed', 1312)
-        
-        if kwargs:
-            unexpected = ', '.join(kwargs.keys())
-            raise ValueError(f"Unexpected parameters for IVFIndex: {unexpected}")
-        
-        self.ids = []
-        self.centroids = None
-        self.inverted_lists = defaultdict(list)
-        self._vector_map = {}  # vector_id -> vector (optional)
-        self._is_trained = False
-
-    def train(self, vecs: np.ndarray) -> None:
+        pass
+    
+    @abstractmethod
+    def delete(self, id: str) -> bool:
         """
-        Train the index by computing cluster centroids.
-        Must be called before adding vectors.
-
+        Delete a vector from the index by ID.
+        
         Args:
-            vecs: Training vectors (n x dim)
+            id: the ID of the vector to delete
+            
+        Returns:
+            True if the vector was found and deleted, False otherwise
         """
-        vecs = np.asarray(vecs, dtype=np.float32)
-        if vecs.ndim != 2 or vecs.shape[1] != self.dim:
-            raise ValueError(f"Expected shape (n, {self.dim}), got {vecs.shape}")
+        pass
+    
+    @abstractmethod
+    def size(self) -> int:
+        """Return the number of vectors currently in the index."""
+        pass
 
-        # Normalize vectors to prevent numerical issues
+
+class BruteForceIndex(Index):
+    """
+    Brute force nearest neighbor search.
+    
+    This is the simplest possible approach - compute distances to every vector
+    and return the k smallest. It's O(n*d) for each query where n is the number
+    of vectors and d is dimensionality.
+    
+    While slow for large datasets, brute force has several advantages:
+    - It's perfectly accurate - no approximation errors
+    - It handles dynamic insertions and deletions with zero overhead
+    - For small datasets (under 10k vectors), it's actually competitive
+
+    It also serves as the baseline for benchmarking faster algorithms.
+
+    The implementation maintains bidirectional ID-to-index mappings for O(1)
+    lookups in both directions, making operations like delete efficient.
+    """
+    
+    def __init__(self, metric: str = 'cosine'):
+        """
+        Initialize brute force search.
+        
+        Args:
+            metric: distance metric to use ('cosine' or 'euclidean')
+        """
+        self.metric = metric
+        
+        # Store vectors as a numpy array for efficient vectorized distance computation
+        self.vectors: Optional[np.ndarray] = None
+        
+        # Store IDs as a list where position i corresponds to vectors[i]
+        # This serves as our idx_to_id mapping
+        self.ids: List[str] = []
+        
+        # Bidirectional mapping for O(1) lookups
+        # This dictionary maps each ID to its position in the vectors array
+        # Without this, operations like delete would require O(n) linear search
+        self._id_to_idx: Dict[str, int] = {}
+        
+    def build(self, vectors: np.ndarray, ids: List[str]) -> None:
+        """
+        Store the initial set of vectors and IDs.
+        
+        This builds both the forward mapping (id to index) and sets up the
+        reverse mapping (index to id) through the ids list. The dual mapping
+        makes all ID-based operations fast.
+        """
+        assert len(ids) == vectors.shape[0], \
+            f"Number of IDs ({len(ids)}) must match number of vectors ({vectors.shape[0]})"
+        assert len(set(ids)) == len(ids), "Duplicate IDs found in the input"
+        
+        # Copy to prevent external modifications - numpy arrays are mutable and passed by reference,
+        # so without copying, external changes to the input arrays could corrupt our index
+        self.vectors = vectors.copy()
+        self.ids = ids.copy()
+        
+        # Build the id_to_idx mapping for O(1) lookups
+        self._id_to_idx = {id: idx for idx, id in enumerate(ids)}
+        
+    def search(self, query: np.ndarray, k: int) -> List[tuple[str, float]]:
+        """
+        Compute distances to all vectors and return the k nearest.
+        
+        The idx_to_id conversion at the end is O(1) per result because we just
+        index into the ids list, which is the whole reason we maintain that list
+        in parallel with the vectors array.
+        """
+        if self.vectors is None or len(self.vectors) == 0 or k == 0:
+            return []
+        
+        # Compute distances based on the metric
         if self.metric == 'cosine':
-            vecs_norm = vecs / np.linalg.norm(vecs, axis=1, keepdims=True)
-            # Add small epsilon to prevent division by zero
-            vecs = np.nan_to_num(vecs_norm, nan=0.0, posinf=1.0, neginf=-1.0)
-       
-        # Compute centroids using k-means
-        kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.random_seed, n_init="auto")
-        kmeans.fit(vecs)
-        self.centroids = kmeans.cluster_centers_
-        self._is_trained = True
-
-    def add(
-        self,
-        vecs: np.ndarray,
-        ids: Optional[List[int]] = None,
-        metadata: Optional[Dict[int, Dict]] = None
-    ) -> None:
-        """
-        Add vectors to the index. The index must be trained first.
-
-        Args:
-            vecs: Vectors to add (n x dim)
-            ids: Optional list of IDs for the vectors
-            metadata: Optional dict mapping vector IDs to metadata dicts
-        """
-        vecs = np.asarray(vecs, dtype=np.float32)
-        if vecs.ndim != 2 or vecs.shape[1] != self.dim:
-            raise ValueError(f"Expected shape (n, {self.dim}), got {vecs.shape}")
-        
-        if ids is None:
-            ids = list(range(len(self.ids), len(self.ids) + len(vecs)))
-
-        # Train if not already trained
-        if not self._is_trained:
-            self.train(vecs)
-        
-        # Assign vectors to nearest centroids
-        distances = self._metric_fn(vecs, self.centroids)
-        cluster_ids = np.argmin(distances, axis=1)
-
-        # Add vectors to inverted lists
-        for i, cluster_id in enumerate(cluster_ids):
-            self.inverted_lists[cluster_id].append((ids[i], vecs[i]))
-            self._vector_map[ids[i]] = vecs[i]
-        
-        # Add metadata
-        if metadata:
-            self.metadata.update(metadata)
-
-        self.ids.extend(ids)
-
-    def search(self, queries: np.ndarray, k: int = 10) -> tuple[np.ndarray, np.ndarray]:
-        queries = np.asarray(queries, dtype=np.float32)
-        if queries.ndim != 2 or queries.shape[1] != self.dim:
-            raise ValueError(f"Expected queries of shape (n, {self.dim}), got {queries.shape}")
-        
-        if self.centroids is None or not self.inverted_lists:
-            return np.zeros((len(queries), k), dtype=np.int64), np.zeros((len(queries), k), dtype=np.float32)
-
-        results = []
-        
-        # Pre-compute centroid distances for all queries at once
-        all_centroid_dists = self._metric_fn(queries, self.centroids)
-        top_clusters_all = np.argpartition(all_centroid_dists, self.n_probe, axis=1)[:, :self.n_probe]
-
-        for qi, q in enumerate(queries):
-            # Use pre-computed top clusters
-            top_clusters = top_clusters_all[qi]
+            # Cosine similarity: (A·B)/(||A||·||B||)
+            # We convert to distance: 1 - similarity
+            query_norm = np.linalg.norm(query)
+            if query_norm == 0:
+                query_norm = 1e-10  # Avoid division by zero
             
-            # Gather candidates more efficiently
-            candidates = []
-            candidate_count = sum(len(self.inverted_lists[cid]) for cid in top_clusters)
-            if candidate_count == 0:
-                results.append([0] * k)
-                continue
-                
-            # Pre-allocate arrays for better memory efficiency
-            candidate_ids = np.empty(candidate_count, dtype=np.int64)
-            candidate_vecs = np.empty((candidate_count, self.dim), dtype=np.float32)
+            vector_norms = np.linalg.norm(self.vectors, axis=1)
+            vector_norms = np.where(vector_norms == 0, 1e-10, vector_norms)
             
-            # Fill arrays without list operations
-            idx = 0
-            for cid in top_clusters:
-                cluster_candidates = self.inverted_lists[cid]
-                chunk_size = len(cluster_candidates)
-                for j, (id_, vec) in enumerate(cluster_candidates):
-                    candidate_ids[idx + j] = id_
-                    candidate_vecs[idx + j] = vec
-                idx += chunk_size
-            
-            # Compute distances and get top-k in one step
-            dists = self._metric_fn(q[None, :], candidate_vecs)[0]
-            k_actual = min(k, len(dists))
-            top_k_idx = np.argpartition(dists, k_actual)[:k_actual]
-            top_k_sorted = top_k_idx[np.argsort(dists[top_k_idx])]
-            
-            results.append(candidate_ids[top_k_sorted].tolist())
-
-        return np.array(results, dtype=np.int64), np.array(results, dtype=np.float32)
-
-    def search_with_metadata(self, queries: np.ndarray, k: int = 10):
-        ids, scores = self.search(queries, k)
-        return ids, scores, [[self.metadata.get(i) for i in row] for row in ids]
-
-class PQIndex(BaseIndex):
-    """Product Quantization (PQ) index for compressed nearest neighbor search."""
-    def __init__(self, dim: int, metric: str = 'euclidean', **kwargs):
-        super().__init__(dim, metric)
-        self.num_subspaces = kwargs.pop('num_subspaces', 4)
-        self.centroids_per_subspace = kwargs.pop('centroids_per_subspace', 256)
-        self.pq = ProductQuantizer(
-            dim=dim,
-            num_subspaces=self.num_subspaces,
-            centroids_per_subspace=self.centroids_per_subspace,
-            seed=kwargs.pop('seed', 42)
-        )
-        self.codes = None  # Encoded dataset
-        self.ids = []
-        self._is_trained = False
-
-    def train(self, vecs: np.ndarray) -> None:
-        vecs = np.asarray(vecs, dtype=np.float32)
-        self.pq.fit(vecs)
-        self._is_trained = True
-
-    def add(self, vecs: np.ndarray, ids: Optional[List[int]] = None, metadata: Optional[Dict[int, Dict]] = None) -> None:
-        vecs = np.asarray(vecs, dtype=np.float32)
-        if vecs.ndim != 2 or vecs.shape[1] != self.dim:
-            raise ValueError(f"Expected shape (n, {self.dim}), got {vecs.shape}")
-
-        if ids is None:
-            ids = list(range(len(self.ids), len(self.ids) + len(vecs)))
-
-        if not self._is_trained:
-            self.train(vecs)
-
-        new_codes = self.pq.encode(vecs)
-        if self.codes is None:
-            self.codes = new_codes
+            # Dot product divided by norms gives cosine similarity
+            similarities = np.dot(self.vectors, query) / (vector_norms * query_norm)
+            distances = 1 - similarities
+        elif self.metric == 'euclidean':
+            # L2 distance: sqrt(sum((A-B)^2))
+            # We don't need the sqrt since we're only comparing distances
+            distances = np.linalg.norm(self.vectors - query, axis=1)
         else:
-            self.codes = np.vstack([self.codes, new_codes])
-
-        self.ids.extend(ids)
-
-        if metadata:
-            self.metadata.update(metadata)
-
-    def search(self, queries: np.ndarray, k: int = 10) -> tuple[np.ndarray, np.ndarray]:
-        queries = np.asarray(queries, dtype=np.float32)
-        if queries.ndim != 2 or queries.shape[1] != self.dim:
-            raise ValueError(f"Expected queries of shape (n, {self.dim}), got {queries.shape}")
-
-        if self.codes is None or len(self.ids) == 0:
-            return np.zeros((len(queries), k), dtype=np.int64), np.zeros((len(queries), k), dtype=np.float32)
-
-        n_queries = queries.shape[0]
-        n_db = self.codes.shape[0]
-
-        # Build lookup tables for all queries at once
-        lookup_tables = np.empty((n_queries, self.num_subspaces, self.centroids_per_subspace), dtype=np.float32)
-
-        for m in range(self.num_subspaces):
-            centroids = self.pq.codebooks[m]  # (n_centroids, subdim)
-            query_subvecs = queries[:, m*self.pq.subdim:(m+1)*self.pq.subdim]  # (n_queries, subdim)
-
-            lookup_tables[:, m] = np.linalg.norm(
-                query_subvecs[:, None, :] - centroids[None, :, :],
-                axis=2
-            )
-
-        # Compute distances
-        dists = np.zeros((n_queries, n_db), dtype=np.float32)
-
-        for m in range(self.num_subspaces):
-            dists += lookup_tables[:, m][:, self.codes[:, m]]
-
-        # Select top-k for each query
-        k = min(k, n_db)
-        top_k_idx = np.argpartition(dists, k, axis=1)[:, :k]
-
-        # Sort each row
-        rows = np.arange(n_queries)[:, None]
-        sorted_top_k_idx = top_k_idx[rows, np.argsort(dists[rows, top_k_idx], axis=1)]
-
-        return np.array(self.ids)[sorted_top_k_idx], dists[rows, sorted_top_k_idx]
-
-    def search_with_metadata(self, queries: np.ndarray, k: int = 10):
-        ids, scores = self.search(queries, k)
-        return ids, scores, [[self.metadata.get(i) for i in row] for row in ids]
+            raise ValueError(f"Unknown metric: {self.metric}")
+        
+        # Find the k smallest distances efficiently
+        # We use argpartition instead of argsort because it's O(n) instead of O(n log n)
+        # when k << n, which is the common case
+        k = min(k, len(distances))
+        
+        # argpartition puts the k smallest elements at the front but doesn't sort them
+        partition_indices = np.argpartition(distances, k-1)[:k]
+        
+        # Now sort just those k elements
+        sorted_indices = partition_indices[np.argsort(distances[partition_indices])]
+        
+        # Convert indices to IDs using our idx_to_id mapping (the ids list)
+        # This is O(1) per result because list indexing is constant time
+        results = [
+            (self.ids[idx], float(distances[idx]))
+            for idx in sorted_indices
+        ]
+        
+        return results
+    
+    def add(self, id: str, vector: np.ndarray) -> None:
+        """
+        Add a new vector to the index.
+        
+        We update both mappings to keep them synchronized. The new vector goes
+        at the end of the array, and we record its position in id_to_idx.
+        """
+        if id in self._id_to_idx:
+            raise ValueError(f"ID '{id}' already exists in the index")
+        
+        # Determine the index where this vector will live
+        new_idx = len(self.ids)
+        
+        # Append to the vectors array
+        if self.vectors is None:
+            self.vectors = vector.reshape(1, -1).copy()
+        else:
+            self.vectors = np.vstack([self.vectors, vector])
+        
+        # Update both mappings
+        self.ids.append(id)
+        self._id_to_idx[id] = new_idx
+    
+    def delete(self, id: str) -> bool:
+        """
+        Delete a vector from the index in O(1) time.
+        
+        Uses swap-and-pop: swap the deleted element with the last element,
+        then remove the last element. This avoids shifting all subsequent elements.
+        Trade-off: vectors are no longer in insertion order, but for similarity
+        search this doesn't matter.
+        """
+        if id not in self._id_to_idx:
+            return False
+        
+        idx = self._id_to_idx[id]
+        last_idx = len(self.ids) - 1
+        
+        # If deleting the last element, no swap needed
+        if idx == last_idx:
+            self.vectors = self.vectors[:-1]
+            self.ids.pop()
+            del self._id_to_idx[id]
+            return True
+        
+        # Swap with last element, then pop
+        last_id = self.ids[last_idx]
+        
+        # Swap in vectors array
+        self.vectors[idx] = self.vectors[last_idx]
+        self.vectors = self.vectors[:-1]
+        
+        # Swap in ids list
+        self.ids[idx] = last_id
+        self.ids.pop()
+        
+        # Update mappings: last element moved to deleted position
+        self._id_to_idx[last_id] = idx
+        del self._id_to_idx[id]
+        
+        return True
+    
+    def size(self) -> int:
+        """Return the number of vectors in the index."""
+        return len(self.ids)
