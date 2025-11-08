@@ -6,14 +6,15 @@ implementations for efficient similarity search.
 """
 
 from .database import VectorDatabase
-from .models import SearchResult
+from .models import SearchResult, Vector
 from .index import Index, BruteForceIndex
 
 __version__ = "0.1.0"
 
 __all__ = [
     "VectorDatabase",
-    "SearchResult", 
+    "SearchResult",
+    "Vector",
     "Index",
     "BruteForceIndex",
 ]

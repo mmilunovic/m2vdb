@@ -5,8 +5,8 @@ High-level vector database API.
 from typing import List, Optional, Dict, Any
 import numpy as np
 
-from .index import Index, BruteForceIndex
-from .models import SearchResult
+from index import Index, BruteForceIndex
+from models import SearchResult
 
 
 class VectorDatabase:

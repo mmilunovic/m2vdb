@@ -1,526 +1,273 @@
 """
-FastAPI server for VectorLite vector database.
+FastAPI server for m2vdb vector database.
 
-This module provides a REST API for creating indexes, inserting vectors,
-searching, and deleting vectors. It's designed to be simple and easy to
-understand while providing the core functionality of a vector database.
-
-The server keeps all indexes in memory for now. Later you can add persistence
-by saving indexes to disk periodically or on shutdown, and loading them on startup.
+Pinecone-style API with multi-index support:
+- Control plane: Create/list/delete indexes
+- Data plane: Vector operations per index
 """
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
-from typing import List, Dict, Optional, Any
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import numpy as np
 from contextlib import asynccontextmanager
+import time
 
-from m2vdb.index import VectorIndex, SearchResult
+from database import VectorDatabase
+from models import (
+    CreateIndexRequest,
+    IndexInfo,
+    UpsertRequest,
+    UpsertResponse,
+    SearchRequest,
+    SearchResponse,
+    DeleteRequest,
+    DeleteResponse,
+    FetchResponse,
+)
 
-class CreateIndexRequest(BaseModel):
-    """Request to create a new index."""
-    name: str = Field(..., description="Unique name for the index", min_length=1)
-    dimension: int = Field(..., description="Dimensionality of vectors", gt=0)
-    metric: str = Field(default="cosine", description="Distance metric (cosine or euclidean)")
-    search_algorithm: str = Field(default="brute_force", description="Search algorithm to use")
+
+security = HTTPBearer()
+
+API_KEYS = {
+    "sk-test-user1": "user1",
+    "sk-test-user2": "user2"
+}
+
+indexes: dict[str, dict[str, VectorDatabase]] = {
+    "user1": {},
+    "user2": {}
+}
+
+
+def get_current_user(auth: HTTPAuthorizationCredentials = Depends(security)) -> str:
+    """Validate API key and return user ID."""
+    api_key = auth.credentials
     
-    @validator('metric')
-    def validate_metric(cls, v):
-        if v not in ['cosine', 'euclidean']:
-            raise ValueError("metric must be 'cosine' or 'euclidean'")
-        return v
+    if api_key not in API_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
-    @validator('search_algorithm')
-    def validate_algorithm(cls, v):
-        if v not in ['brute_force', 'pq', 'hnsw']:
-            raise ValueError("search_algorithm must be 'brute_force', 'pq', or 'hnsw'")
-        return v
+    return API_KEYS[api_key]
 
-
-class CreateIndexResponse(BaseModel):
-    """Response after creating an index."""
-    name: str
-    dimension: int
-    metric: str
-    search_algorithm: str
-    message: str
-
-
-class VectorInsert(BaseModel):
-    """A single vector to insert."""
-    id: str = Field(..., description="Unique identifier for this vector")
-    vector: List[float] = Field(..., description="The vector values")
-    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Optional metadata")
-
-
-class InsertVectorsRequest(BaseModel):
-    """Request to insert one or more vectors."""
-    vectors: List[VectorInsert] = Field(..., description="List of vectors to insert", min_items=1)
-
-
-class InsertVectorsResponse(BaseModel):
-    """Response after inserting vectors."""
-    inserted_count: int
-    message: str
-
-
-class SearchRequest(BaseModel):
-    """Request to search for nearest neighbors."""
-    vector: List[float] = Field(..., description="Query vector")
-    k: int = Field(default=10, description="Number of nearest neighbors to return", gt=0)
-    return_metadata: bool = Field(default=True, description="Whether to include metadata in results")
-
-
-class SearchResultResponse(BaseModel):
-    """A single search result."""
-    id: str
-    distance: float
-    metadata: Optional[Dict[str, Any]] = None
-
-
-class SearchResponse(BaseModel):
-    """Response containing search results."""
-    results: List[SearchResultResponse]
-    query_time_ms: float
-
-
-class DeleteVectorRequest(BaseModel):
-    """Request to delete one or more vectors."""
-    ids: List[str] = Field(..., description="List of vector IDs to delete", min_items=1)
-
-
-class DeleteVectorResponse(BaseModel):
-    """Response after deleting vectors."""
-    deleted_count: int
-    message: str
-
-
-class IndexInfo(BaseModel):
-    """Information about an index."""
-    name: str
-    dimension: int
-    metric: str
-    search_algorithm: str
-    size: int
-    is_built: bool
-
-
-class ListIndexesResponse(BaseModel):
-    """Response listing all indexes."""
-    indexes: List[IndexInfo]
-
-
-class BuildIndexResponse(BaseModel):
-    """Response after building an index."""
-    name: str
-    size: int
-    message: str
-
-
-# ============================================================================
-# Global State
-# ============================================================================
-
-# Dictionary mapping index names to VectorIndex instances
-# This is our in-memory storage of all indexes
-# In a production system, you'd want to persist these to disk and implement
-# proper concurrency control, but for your learning project this is fine
-indexes: Dict[str, VectorIndex] = {}
-
-
-# ============================================================================
-# Lifecycle Management
-# ============================================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Lifecycle manager for the FastAPI application.
-    
-    This function runs when the server starts up and shuts down. You can use
-    it to load indexes from disk on startup and save them on shutdown. For now
-    it's just a placeholder that yields control to the application.
-    """
-    # Startup: could load indexes from disk here
-    print("VectorLite server starting up...")
-    print(f"Loaded {len(indexes)} indexes from memory")
-    
-    yield  # Server runs here
-    
-    # Shutdown: could save indexes to disk here
-    print("VectorLite server shutting down...")
-    print(f"Had {len(indexes)} indexes in memory")
+    """Startup/shutdown lifecycle."""
+    total_indexes = sum(len(user_indexes) for user_indexes in indexes.values())
+    print(f"m2vdb server starting... {total_indexes} indexes loaded across {len(indexes)} users")
+    yield
+    total_indexes = sum(len(user_indexes) for user_indexes in indexes.values())
+    print(f"m2vdb server shutting down... {total_indexes} indexes in memory")
 
-
-# ============================================================================
-# FastAPI Application
-# ============================================================================
 
 app = FastAPI(
-    title="VectorLite",
-    description="A simple vector database for learning and experimentation",
+    title="m2vdb",
+    description="Vector database with Pinecone-style API",
     version="0.1.0",
     lifespan=lifespan
 )
 
-# Add CORS middleware to allow requests from web browsers
-# This is necessary if you want to build a web UI that runs on a different port
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# ============================================================================
-# API Endpoints
-# ============================================================================
+@app.post("/indexes/{name}", response_model=IndexInfo, status_code=status.HTTP_201_CREATED)
+async def create_index(
+    name: str, 
+    request: CreateIndexRequest,
+    user_id: str = Depends(get_current_user)
+):
+    """Create a new index."""
+    if name in indexes[user_id]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Index '{name}' already exists"
+        )
+    
+    assert request.metric in ['cosine', 'euclidean'], "Invalid metric"
+    assert request.index_type in ['brute_force', 'pq', 'hnsw'], "Invalid index_type"
+    
+    try:
+        db = VectorDatabase(
+            dimension=request.dimension,
+            metric=request.metric,
+            index_type=request.index_type
+        )
+        indexes[user_id][name] = db
+        
+        return IndexInfo(
+            name=name,
+            dimension=db.dimension,
+            metric=db.metric,
+            index_type=db.index_type,
+            size=0
+        )
+    except NotImplementedError as e:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
 
-@app.get("/")
-async def root():
-    """Root endpoint that returns basic information about the server."""
+
+@app.get("/indexes")
+async def list_indexes(user_id: str = Depends(get_current_user)):
+    """List all indexes for the authenticated user."""
     return {
-        "name": "VectorLite",
-        "version": "0.1.0",
-        "description": "A simple vector database",
-        "endpoints": {
-            "create_index": "POST /indexes",
-            "list_indexes": "GET /indexes",
-            "get_index": "GET /indexes/{name}",
-            "delete_index": "DELETE /indexes/{name}",
-            "insert_vectors": "POST /indexes/{name}/vectors",
-            "search": "POST /indexes/{name}/search",
-            "delete_vectors": "DELETE /indexes/{name}/vectors",
-            "build_index": "POST /indexes/{name}/build"
-        }
+        "indexes": [
+            IndexInfo(
+                name=name,
+                dimension=db.dimension,
+                metric=db.metric,
+                index_type=db.index_type,
+                size=db.size()
+            )
+            for name, db in indexes[user_id].items()
+        ]
     }
 
 
-@app.post("/indexes", response_model=CreateIndexResponse, status_code=status.HTTP_201_CREATED)
-async def create_index(request: CreateIndexRequest):
-    """
-    Create a new vector index.
-    
-    The index starts empty and unbuild. You'll need to insert vectors and then
-    call the build endpoint before you can search. This separation allows you
-    to bulk-load large datasets efficiently.
-    """
-    if request.name in indexes:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Index '{request.name}' already exists"
-        )
-    
-    try:
-        index = VectorIndex(
-            dimension=request.dimension,
-            metric=request.metric,
-            search_algorithm=request.search_algorithm
-        )
-        indexes[request.name] = index
-        
-        return CreateIndexResponse(
-            name=request.name,
-            dimension=request.dimension,
-            metric=request.metric,
-            search_algorithm=request.search_algorithm,
-            message=f"Index '{request.name}' created successfully"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create index: {str(e)}"
-        )
-
-
-@app.get("/indexes", response_model=ListIndexesResponse)
-async def list_indexes():
-    """
-    List all indexes currently in the database.
-    
-    This returns metadata about each index including its size and whether
-    it has been built yet. Useful for understanding what's in your database
-    and for debugging.
-    """
-    index_list = []
-    for name, index in indexes.items():
-        index_list.append(IndexInfo(
-            name=name,
-            dimension=index.dimension,
-            metric=index.metric,
-            search_algorithm=index.search_algorithm_name,
-            size=index.size(),
-            is_built=index._is_built
-        ))
-    
-    return ListIndexesResponse(indexes=index_list)
-
-
 @app.get("/indexes/{name}", response_model=IndexInfo)
-async def get_index(name: str):
-    """
-    Get detailed information about a specific index.
+async def get_index(name: str, user_id: str = Depends(get_current_user)):
+    """Get index info."""
+    if name not in indexes[user_id]:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Index '{name}' not found")
     
-    Returns metadata like dimension, metric, algorithm, current size, and
-    build status. This is useful for checking the state of an index before
-    performing operations on it.
-    """
-    if name not in indexes:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Index '{name}' not found"
-        )
-    
-    index = indexes[name]
+    db = indexes[user_id][name]
     return IndexInfo(
         name=name,
-        dimension=index.dimension,
-        metric=index.metric,
-        search_algorithm=index.search_algorithm_name,
-        size=index.size(),
-        is_built=index._is_built
+        dimension=db.dimension,
+        metric=db.metric,
+        index_type=db.index_type,
+        size=db.size()
     )
 
 
 @app.delete("/indexes/{name}")
-async def delete_index(name: str):
-    """
-    Delete an index and all its data.
+async def delete_index(name: str, user_id: str = Depends(get_current_user)):
+    """Delete an index."""
+    if name not in indexes[user_id]:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Index '{name}' not found")
     
-    This is irreversible, so use with caution. In a production system you'd
-    want to add confirmation or soft-delete mechanisms, but for your learning
-    project this simple approach is fine.
-    """
-    if name not in indexes:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Index '{name}' not found"
-        )
-    
-    del indexes[name]
-    return {"message": f"Index '{name}' deleted successfully"}
+    del indexes[user_id][name]
+    return {"message": f"Index '{name}' deleted"}
 
 
-@app.post("/indexes/{name}/vectors", response_model=InsertVectorsResponse)
-async def insert_vectors(name: str, request: InsertVectorsRequest):
-    """
-    Insert one or more vectors into an index.
+def _get_index(name: str, user_id: str) -> VectorDatabase:
+    """Helper to get index or raise 404."""
+    if name not in indexes[user_id]:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Index '{name}' not found")
+    return indexes[user_id][name]
+
+
+@app.post("/indexes/{name}/vectors", response_model=UpsertResponse)
+async def upsert_vectors(
+    name: str, 
+    request: UpsertRequest,
+    user_id: str = Depends(get_current_user)
+):
+    """Upsert (insert/update) vectors."""
+    db = _get_index(name, user_id)
     
-    If the index hasn't been built yet, vectors are added to a pending buffer.
-    If it has been built, vectors are immediately added to the search index and
-    become searchable right away. This dual behavior lets you bulk-load data
-    efficiently while also supporting incremental updates.
-    """
-    if name not in indexes:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Index '{name}' not found"
-        )
-    
-    index = indexes[name]
-    inserted_count = 0
+    upserted = 0
     errors = []
     
-    for vec_insert in request.vectors:
+    for vec in request.vectors:
         try:
-            # Convert list to numpy array
-            vector = np.array(vec_insert.vector, dtype=np.float32)
-            
-            # Insert into index
-            index.insert(
-                id=vec_insert.id,
-                vector=vector,
-                metadata=vec_insert.metadata
-            )
-            inserted_count += 1
-            
-        except ValueError as e:
-            # Collect errors but continue processing other vectors
-            errors.append(f"Failed to insert '{vec_insert.id}': {str(e)}")
-        except Exception as e:
-            errors.append(f"Unexpected error inserting '{vec_insert.id}': {str(e)}")
+            vector_array = np.array(vec.vector, dtype=np.float32)
+            db.insert(vec.id, vector_array, vec.metadata)
+            upserted += 1
+        except (ValueError, AssertionError) as e:
+            errors.append(f"{vec.id}: {str(e)}")
     
-    # If we had errors but also some successes, return partial success
-    if errors and inserted_count > 0:
-        return InsertVectorsResponse(
-            inserted_count=inserted_count,
-            message=f"Inserted {inserted_count} vectors with {len(errors)} errors. Errors: {'; '.join(errors[:5])}"
-        )
+    if errors and upserted == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(errors[:5]))
     
-    # If we had only errors, raise an exception
-    if errors and inserted_count == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to insert any vectors. Errors: {'; '.join(errors[:5])}"
-        )
-    
-    # All successes
-    return InsertVectorsResponse(
-        inserted_count=inserted_count,
-        message=f"Successfully inserted {inserted_count} vectors"
-    )
-
-
-@app.post("/indexes/{name}/build", response_model=BuildIndexResponse)
-async def build_index(name: str):
-    """
-    Build the search index from all inserted vectors.
-    
-    This creates the data structures needed for efficient search. For brute
-    force this is quick, but for HNSW it can take a while on large datasets.
-    You must call this before searching if you've inserted vectors.
-    
-    After building, subsequent vector insertions go directly into the search
-    index rather than a pending buffer, so they're immediately searchable.
-    """
-    if name not in indexes:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Index '{name}' not found"
-        )
-    
-    index = indexes[name]
-    
-    try:
-        index.build()
-        return BuildIndexResponse(
-            name=name,
-            size=index.size(),
-            message=f"Index '{name}' built successfully with {index.size()} vectors"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to build index: {str(e)}"
-        )
+    return UpsertResponse(upserted_count=upserted)
 
 
 @app.post("/indexes/{name}/search", response_model=SearchResponse)
-async def search(name: str, request: SearchRequest):
-    """
-    Search for nearest neighbors in an index.
-    
-    This is the core operation of your vector database. It finds the k vectors
-    most similar to your query vector according to the configured distance metric.
-    Returns results sorted by distance with the closest vectors first.
-    """
-    if name not in indexes:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Index '{name}' not found"
-        )
-    
-    index = indexes[name]
+async def search_vectors(
+    name: str, 
+    request: SearchRequest,
+    user_id: str = Depends(get_current_user)
+):
+    """Search for similar vectors."""
+    db = _get_index(name, user_id)
     
     try:
-        # Convert query list to numpy array
-        query_vector = np.array(request.vector, dtype=np.float32)
+        query = np.array(request.vector, dtype=np.float32)
         
-        # Measure search time
-        import time
-        start_time = time.time()
-        
-        # Perform search
-        results = index.search(
-            query=query_vector,
-            k=request.k,
-            return_metadata=request.return_metadata
-        )
-        
-        end_time = time.time()
-        query_time_ms = (end_time - start_time) * 1000
-        
-        # Convert to response format
-        response_results = [
-            SearchResultResponse(
-                id=result.id,
-                distance=result.distance,
-                metadata=result.metadata
-            )
-            for result in results
-        ]
+        start = time.perf_counter()
+        results = db.search(query, request.k, request.include_metadata)
+        elapsed_ms = (time.perf_counter() - start) * 1000
         
         return SearchResponse(
-            results=response_results,
-            query_time_ms=query_time_ms
+            matches=results,
+            query_time_ms=elapsed_ms
         )
-        
-    except RuntimeError as e:
-        # This catches the "index not built" error from VectorIndex
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid query vector: {str(e)}"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Search failed: {str(e)}"
-        )
+    except (ValueError, AssertionError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@app.delete("/indexes/{name}/vectors", response_model=DeleteVectorResponse)
-async def delete_vectors(name: str, request: DeleteVectorRequest):
-    """
-    Delete one or more vectors from an index by their IDs.
+@app.post("/indexes/{name}/vectors/delete", response_model=DeleteResponse)
+async def delete_vectors(
+    name: str, 
+    request: DeleteRequest,
+    user_id: str = Depends(get_current_user)
+):
+    """Delete vectors by ID."""
+    db = _get_index(name, user_id)
     
-    This removes the vectors from the index so they won't appear in future
-    search results. The operation is immediate - if the index is built, the
-    vectors are removed from the search structures right away.
-    """
-    if name not in indexes:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Index '{name}' not found"
-        )
+    deleted = sum(1 for id in request.ids if db.delete(id))
     
-    index = indexes[name]
-    deleted_count = 0
-    
-    for vec_id in request.ids:
-        if index.delete(vec_id):
-            deleted_count += 1
-    
-    return DeleteVectorResponse(
-        deleted_count=deleted_count,
-        message=f"Deleted {deleted_count} of {len(request.ids)} vectors"
-    )
+    return DeleteResponse(deleted_count=deleted)
 
 
-# ============================================================================
-# Health Check
-# ============================================================================
+@app.get("/indexes/{name}/vectors/{id}", response_model=FetchResponse)
+async def fetch_vector(
+    name: str, 
+    id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Fetch a vector by ID."""
+    db = _get_index(name, user_id)
+    
+    # Get vector from index
+    if id not in db.index._id_to_idx:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vector '{id}' not found")
+    
+    idx = db.index._id_to_idx[id]
+    vector = db.index.vectors[idx].tolist()
+    metadata = db._metadata.get(id)
+    
+    return FetchResponse(id=id, vector=vector, metadata=metadata)
+
+
+@app.get("/")
+async def root():
+    """API info."""
+    total_indexes = sum(len(user_indexes) for user_indexes in indexes.values())
+    return {
+        "name": "m2vdb",
+        "version": "0.1.0",
+        "total_indexes": total_indexes,
+        "users": len(indexes)
+    }
+
 
 @app.get("/health")
-async def health_check():
-    """
-    Simple health check endpoint for monitoring.
-    
-    Returns the number of indexes and basic server status. Useful for
-    deployment tools and monitoring systems to verify the server is running.
-    """
-    return {
-        "status": "healthy",
-        "indexes_count": len(indexes),
-        "version": "0.1.0"
-    }
+async def health():
+    """Health check."""
+    total_indexes = sum(len(user_indexes) for user_indexes in indexes.values())
+    return {"status": "healthy", "total_indexes": total_indexes}
 
 
 if __name__ == "__main__":
     import uvicorn
-    
-    # Run the server when this file is executed directly
-    # In production you'd use a proper ASGI server with multiple workers
-    uvicorn.run(
-        app,
-        host="0.0.0.0",  # Listen on all interfaces
-        port=8000,
-        log_level="info"
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
