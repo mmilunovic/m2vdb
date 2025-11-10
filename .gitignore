@@ -1,0 +1,8 @@
+m2vdb/__pycache__
+m2vdb/.env
+m2vdb/.venv/
+m2vdb.egg*
+__pycache__
+uv.lock
+uv.lock
+m2vdb/__pycache__/server.cpython-312.pyc

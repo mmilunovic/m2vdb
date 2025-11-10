@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "m2vdb"
 version = "0.1.0"
@@ -6,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.121.0",
+    "httpx>=0.28.1",
     "numpy>=2.3.4",
     "pydantic>=2.12.3",
     "uvicorn>=0.38.0",
