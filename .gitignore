@@ -1,3 +1,13 @@
+<<<<<<< HEAD
+m2vdb/__pycache__
+m2vdb/.env
+m2vdb/.venv/
+m2vdb.egg*
+__pycache__
+uv.lock
+uv.lock
+m2vdb/__pycache__/server.cpython-312.pyc
+=======
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -188,3 +198,4 @@ node_modules/
 
 # Project planning
 plan.md
+>>>>>>> bc1fe633faa3e73c7863b2fb5fc417afdcf871fb

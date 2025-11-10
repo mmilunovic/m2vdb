@@ -1,3 +1,22 @@
+<<<<<<< HEAD
+vectorlite/
+├── vectorlite/
+│   ├── __init__.py
+│   ├── index.py          # VectorIndex class - core data structure
+│   ├── storage.py        # Persistence (save/load to disk)
+│   ├── server.py         # FastAPI app and all endpoints
+│   └── config.py         # Configuration settings
+├── tests/
+│   ├── test_index.py     # Test insert, delete, search work correctly
+│   └── test_server.py    # Test API endpoints return right responses
+├── benchmarks/
+│   ├── datasets.py       # Download SIFT1M, GIST1M
+│   └── benchmark.py      # Run timing tests, compare to FAISS
+├── examples/
+│   └── quickstart.py     # Simple usage example
+├── pyproject.toml
+└── README.md
+=======
 # m2vdb
 
 > A lightweight vector database built from scratch in Python — by someone who doesn't know how to build a vector database. YET!
@@ -109,3 +128,4 @@ loaded_db = VectorDatabase(storage_path="my_vector_db_pq", load_existing=True)
 new_results = loaded_db.search(queries=query, k=5)
 print(f"Loaded DB top match: {new_results[0][0]}")
 ```
+>>>>>>> bc1fe633faa3e73c7863b2fb5fc417afdcf871fb

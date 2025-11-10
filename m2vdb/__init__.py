@@ -1,26 +1,19 @@
-"""m2vdb – educational vector database playground."""
+"""
+m2vdb: A simple, fast vector database in Python.
+"""
 
-from .database import VectorDatabase, V3cT0rDaTaBas3
-from .indexes import (
-    BruteForceIndex,
-    IVFIndex,
-    PQIndex,
-    create_index,
-    get_index_class,
-    index_name_for,
-    register_index,
-    registered_indexes,
-)
+from .client import M2VDBClient
+from .database import VectorDatabase
+from .models import SearchResult, Vector
+from .index import Index, BruteForceIndex
+
+__version__ = "0.1.0"
 
 __all__ = [
+    "M2VDBClient",
     "VectorDatabase",
-    "V3cT0rDaTaBas3",
+    "SearchResult",
+    "Vector",
+    "Index",
     "BruteForceIndex",
-    "IVFIndex",
-    "PQIndex",
-    "create_index",
-    "get_index_class",
-    "index_name_for",
-    "register_index",
-    "registered_indexes",
 ]
