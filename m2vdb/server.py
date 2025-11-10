@@ -13,8 +13,8 @@ import numpy as np
 from contextlib import asynccontextmanager
 import time
 
-from database import VectorDatabase
-from models import (
+from .database import VectorDatabase
+from .models import (
     CreateIndexRequest,
     IndexInfo,
     UpsertRequest,
@@ -211,18 +211,23 @@ async def search_vectors(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@app.delete("/indexes/{name}/vectors", response_model=DeleteResponse)
-async def delete_vectors(
-    name: str, 
-    request: DeleteRequest,
+@app.delete("/indexes/{name}/vectors/{id}", response_model=DeleteResponse)
+async def delete_vector(
+    name: str,
+    id: str,
     user_id: str = Depends(get_current_user)
 ):
-    """Delete vectors by ID."""
+    """Delete a single vector by ID."""
     db = _get_index(name, user_id)
     
-    deleted = sum(1 for id in request.ids if db.delete(id))
+    deleted = db.delete(id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Vector '{id}' not found"
+        )
     
-    return DeleteResponse(deleted_count=deleted)
+    return DeleteResponse(deleted_count=1)
 
 
 @app.get("/indexes/{name}/vectors/{id}", response_model=FetchResponse)
