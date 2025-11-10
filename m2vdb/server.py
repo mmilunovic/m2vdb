@@ -93,9 +93,6 @@ async def create_index(
             detail=f"Index '{name}' already exists"
         )
     
-    assert request.metric in ['cosine', 'euclidean'], "Invalid metric"
-    assert request.index_type in ['brute_force', 'pq', 'hnsw'], "Invalid index_type"
-    
     try:
         db = VectorDatabase(
             dimension=request.dimension,
@@ -180,16 +177,15 @@ async def upsert_vectors(
     for vec in request.vectors:
         try:
             vector_array = np.array(vec.vector, dtype=np.float32)
-            db.insert(vec.id, vector_array, vec.metadata)
+            db.upsert(vec.id, vector_array, vec.metadata)
             upserted += 1
-        except (ValueError, AssertionError) as e:
+        except ValueError as e:
             errors.append(f"{vec.id}: {str(e)}")
     
     if errors and upserted == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(errors[:5]))
     
     return UpsertResponse(upserted_count=upserted)
-
 
 @app.post("/indexes/{name}/search", response_model=SearchResponse)
 async def search_vectors(
@@ -211,11 +207,11 @@ async def search_vectors(
             matches=results,
             query_time_ms=elapsed_ms
         )
-    except (ValueError, AssertionError) as e:
+    except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@app.post("/indexes/{name}/vectors/delete", response_model=DeleteResponse)
+@app.delete("/indexes/{name}/vectors", response_model=DeleteResponse)
 async def delete_vectors(
     name: str, 
     request: DeleteRequest,

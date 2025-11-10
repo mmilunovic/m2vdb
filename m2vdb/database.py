@@ -46,13 +46,13 @@ class VectorDatabase:
         else:
             raise ValueError(f"Unknown index type: {index_type}")
     
-    def insert(
+    def upsert(
         self, 
         id: str, 
         vector: np.ndarray, 
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
-        """Add a vector to the database."""
+        """Insert or update a vector in the database."""
         assert vector.shape == (self.dimension,), \
             f"Vector dimension {vector.shape} doesn't match {self.dimension}"
         assert id not in self.index._id_to_idx, f"ID '{id}' already exists"
@@ -62,13 +62,13 @@ class VectorDatabase:
         
         self.index.add(id, vector.copy())
     
-    def insert_batch(
+    def upsert_batch(
         self, 
         ids: List[str], 
         vectors: np.ndarray,
         metadata: Optional[List[Dict[str, Any]]] = None
     ) -> None:
-        """Bulk insert vectors using index.build() for better performance."""
+        """Bulk upsert vectors using index.build() for better performance."""
         assert len(ids) == vectors.shape[0], \
             f"Number of IDs ({len(ids)}) must match number of vectors ({vectors.shape[0]})"
         assert vectors.shape[1] == self.dimension, \
