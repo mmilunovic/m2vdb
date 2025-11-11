@@ -145,10 +145,7 @@ def read_ivecs(filepath: Path) -> np.ndarray:
         return vectors
 
 
-def load_sift1m(
-    limit: Optional[int] = None,
-    download: bool = True
-) -> Dataset:
+def load_sift1m(download: bool = True) -> Dataset:
     """
     Load SIFT1M dataset.
     
@@ -163,11 +160,10 @@ def load_sift1m(
     The ground truth was pre-computed by the dataset creators.
     
     Args:
-        limit: Limit number of base vectors (for quick testing)
         download: Download dataset if not present
     
     Returns:
-        Dataset object with vectors and ground truth
+        Dataset object with ALL vectors and ground truth
     """
     data_dir = get_data_dir()
     sift_dir = data_dir / "sift"
@@ -197,13 +193,9 @@ def load_sift1m(
         
         print("✓ SIFT1M ready")
     
-    # Read vectors
+    # Read vectors (ALWAYS load full corpus)
     print("Loading SIFT1M base vectors...")
     base_vectors = read_fvecs(base_file)
-    
-    if limit is not None and limit < len(base_vectors):
-        print(f"Limiting base vectors to {limit:,}")
-        base_vectors = base_vectors[:limit]
     
     print("Loading SIFT1M query vectors...")
     query_vectors = read_fvecs(query_file)
@@ -224,30 +216,29 @@ def load_sift1m(
 
 
 def load_fasttext(
-    limit: Optional[int] = None,
     download: bool = True,
-    subset_size: int = 1_000_000
+    corpus_size: int = 1_000_000
 ) -> Dataset:
     """
     Load FastText word embeddings as a benchmark dataset.
     
     Dataset details:
-    - 2M words from Common Crawl (300D, float32)
-    - We split into base (90%) and queries (10%) - queries NOT in index
-    - We compute ground truth via brute force on the split
+    - Configurable corpus size (default 1M words from 2M available)
+    - 300D float32 embeddings
+    - 10,000 query vectors sampled from corpus
+    - Ground truth computed via brute force cosine similarity
     - Metric: Cosine similarity
-    - Size: ~5GB uncompressed
+    - Size: ~5GB uncompressed (full 2M)
     
-    Note: Unlike SIFT1M, FastText doesn't come with pre-split query/base sets,
-    so we split it ourselves (last 10% as queries) to ensure realistic benchmarking.
+    Note: For word embeddings, queries ARE in the index. When you search for "king",
+    you expect to find "king" as top result, followed by similar words.
     
     Args:
-        limit: Limit number of base vectors (for quick testing)
         download: Download dataset if not present
-        subset_size: Maximum vectors to load from FastText (it's huge!)
+        corpus_size: Number of words to load as corpus (max 2M)
     
     Returns:
-        Dataset object with vectors and synthetic ground truth
+        Dataset object with ALL vectors and ground truth
     """
     data_dir = get_data_dir()
     fasttext_dir = data_dir / "fasttext"
@@ -271,7 +262,7 @@ def load_fasttext(
     
     # Read FastText vectors
     # Format: word dim1 dim2 ... dim300
-    print(f"Loading FastText vectors (up to {subset_size:,})...")
+    print(f"Loading FastText vectors (up to {corpus_size:,})...")
     vectors = []
     
     with open(vectors_file, 'r', encoding='utf-8') as f:
@@ -279,7 +270,7 @@ def load_fasttext(
         n_words, dim = map(int, f.readline().split())
         print(f"FastText metadata: {n_words:,} words, {dim}D")
         
-        max_load = min(subset_size, n_words)
+        max_load = min(corpus_size, n_words)
         for i, line in enumerate(f):
             if i >= max_load:
                 break
@@ -293,46 +284,64 @@ def load_fasttext(
                 print(f"  Loaded {i + 1:,} vectors...")
     
     base_vectors = np.array(vectors, dtype=np.float32)
+    print(f"✓ Loaded {len(base_vectors):,} word vectors")
     
-    if limit is not None and limit < len(base_vectors):
-        print(f"Limiting base vectors to {limit:,}")
-        base_vectors = base_vectors[:limit]
-    
-    # Create query vectors: sample 10,000 random vectors from base
+    # Create query vectors: sample 10K from corpus
     # Note: For word embeddings, it's CORRECT that queries are in the index!
     # When you search for "king", you expect to find "king" as the top result,
     # followed by semantically similar words like "queen", "monarch", etc.
     n_queries = min(10_000, len(base_vectors))
-    query_indices = np.random.choice(len(base_vectors), size=n_queries, replace=False)
-    query_vectors = base_vectors[query_indices]
     
-    # Generate ground truth using brute force (only compute top 100)
-    print(f"Computing ground truth for {n_queries:,} queries (this may take a minute)...")
-    k = 100
-    ground_truth = np.zeros((n_queries, k), dtype=np.int32)
+    # Check for cached ground truth and query indices
+    gt_cache_file = fasttext_dir / f"fasttext_groundtruth_corpus_{len(base_vectors)}.npy"
+    query_idx_cache_file = fasttext_dir / f"fasttext_query_indices_corpus_{len(base_vectors)}.npy"
     
-    # Normalize vectors for cosine similarity
-    base_norms = np.linalg.norm(base_vectors, axis=1, keepdims=True)
-    base_normed = base_vectors / (base_norms + 1e-10)
-    
-    query_norms = np.linalg.norm(query_vectors, axis=1, keepdims=True)
-    query_normed = query_vectors / (query_norms + 1e-10)
-    
-    # Compute in batches to avoid memory issues
-    batch_size = 100
-    for i in range(0, n_queries, batch_size):
-        end = min(i + batch_size, n_queries)
-        batch_queries = query_normed[i:end]
+    if gt_cache_file.exists() and query_idx_cache_file.exists():
+        print(f"Loading cached ground truth for {len(base_vectors):,} corpus...")
+        ground_truth = np.load(gt_cache_file)
+        query_indices = np.load(query_idx_cache_file)
+        query_vectors = base_vectors[query_indices]
+        print(f"  ✓ Loaded from cache")
+    else:
+        # Generate new query indices
+        print(f"Generating ground truth for {n_queries:,} queries...")
+        np.random.seed(42)  # Fixed seed for reproducibility
+        query_indices = np.random.choice(len(base_vectors), size=n_queries, replace=False)
+        query_vectors = base_vectors[query_indices]
         
-        # Cosine similarity = dot product of normalized vectors
-        similarities = np.dot(batch_queries, base_normed.T)
+        # Generate ground truth using brute force (only compute top 100)
+        print(f"Computing ground truth (this may take a few minutes)...")
+        k = 100
+        ground_truth = np.zeros((n_queries, k), dtype=np.int32)
         
-        # Get top k indices (argsort returns ascending, so we negate)
-        top_k_indices = np.argsort(-similarities, axis=1)[:, :k]
-        ground_truth[i:end] = top_k_indices
+        # Normalize vectors for cosine similarity
+        base_norms = np.linalg.norm(base_vectors, axis=1, keepdims=True)
+        base_normed = base_vectors / (base_norms + 1e-10)
         
-        if (end) % 1000 == 0:
-            print(f"  Computed ground truth for {end:,} queries...")
+        query_norms = np.linalg.norm(query_vectors, axis=1, keepdims=True)
+        query_normed = query_vectors / (query_norms + 1e-10)
+        
+        # Compute in batches to avoid memory issues
+        batch_size = 100
+        for i in range(0, n_queries, batch_size):
+            end = min(i + batch_size, n_queries)
+            batch_queries = query_normed[i:end]
+            
+            # Cosine similarity = dot product of normalized vectors
+            similarities = np.dot(batch_queries, base_normed.T)
+            
+            # Get top k indices (argsort returns ascending, so we negate)
+            top_k_indices = np.argsort(-similarities, axis=1)[:, :k]
+            ground_truth[i:end] = top_k_indices
+            
+            if (end) % 1000 == 0:
+                print(f"  Computed ground truth for {end:,} queries...")
+        
+        # Cache for next time
+        print(f"  Caching ground truth and query indices...")
+        np.save(gt_cache_file, ground_truth)
+        np.save(query_idx_cache_file, query_indices)
+        print(f"  ✓ Ground truth computed and cached")
     
     print(f"✓ Loaded FastText: {len(base_vectors):,} base, {len(query_vectors):,} queries")
     
@@ -363,14 +372,14 @@ if __name__ == "__main__":
     print("\n" + "=" * 70)
     print("Downloading SIFT1M (128D, 1M vectors, ~500MB compressed)")
     print("=" * 70)
-    sift = load_sift1m(limit=None, download=True)
+    sift = load_sift1m(download=True)
     print(f"\n✓ SIFT1M ready: {sift}\n")
     
     # Download FastText
     print("\n" + "=" * 70)
-    print("Downloading FastText (300D, 2M vectors, ~5GB)")
+    print("Downloading FastText (300D, 1M vectors)")
     print("=" * 70)
-    fasttext = load_fasttext(limit=None, download=True, subset_size=1_000_000)
+    fasttext = load_fasttext(download=True, corpus_size=1_000_000)
     print(f"\n✓ FastText ready: {fasttext}\n")
     
     print("\n" + "=" * 70)
@@ -378,5 +387,5 @@ if __name__ == "__main__":
     print("=" * 70)
     print("\nYou can now run benchmarks with:")
     print("  uv run python benchmarks/run_benchmarks.py")
-    print("\nOr with a smaller dataset for quick testing:")
-    print("  uv run python benchmarks/run_benchmarks.py --limit 10000")
+    print("\nOr with limits for quick testing:")
+    print("  uv run python benchmarks/run_benchmarks.py --limit 10000 --n-queries 100")
