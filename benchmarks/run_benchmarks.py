@@ -1,0 +1,196 @@
+"""
+Run comprehensive benchmarks on m2vdb indexes.
+
+This script benchmarks multiple index types on SIFT1M and FastText datasets,
+measuring build time, search latency, recall, and memory usage.
+
+Always uses the full corpus for indexing, with configurable query count.
+
+Usage:
+    uv run python benchmarks/run_benchmarks.py [--n-queries N] [--sift] [--fasttext]
+
+Examples:
+    # Run all benchmarks with 1k queries (default)
+    uv run python benchmarks/run_benchmarks.py
+    
+    # Quick test with 100 queries
+    uv run python benchmarks/run_benchmarks.py --n-queries 100
+    
+    # Run only SIFT1M benchmarks
+    uv run python benchmarks/run_benchmarks.py --sift
+    
+    # Run with 10k queries for full benchmark
+    uv run python benchmarks/run_benchmarks.py --n-queries 10000
+"""
+
+import argparse
+from rich.console import Console
+
+from benchmarks.datasets import load_sift1m, load_fasttext
+from benchmarks.benchmark import BenchmarkRunner
+from m2vdb import VectorDatabase
+
+
+def create_benchmark_configs(dimension: int, metric: str, skip_brute: bool = False):
+    """
+    Create index configurations for benchmarking.
+    
+    Args:
+        dimension: Vector dimensionality
+        metric: Distance metric ('euclidean' or 'cosine')
+        skip_brute: Skip BruteForce index (for speed)
+    
+    Returns:
+        List of config dicts with 'name' and 'factory' keys
+    """
+    configs = []
+    
+    # BruteForce (baseline)
+    if not skip_brute:
+        configs.append({
+            'name': f'BruteForce-{metric}',
+            'factory': lambda: VectorDatabase(
+                dimension=dimension,
+                metric=metric,
+                index_type='brute_force'
+            )
+        })
+    
+    # PQ: choose subvectors based on dimension
+    # SIFT (128D): m=8 → 16D per subvector
+    # FastText (300D): m=10 → 30D per subvector
+    if dimension == 128:
+        m = 8
+    elif dimension == 300:
+        m = 10
+    else:
+        # Default to 8 if we don't know the dimension
+        m = 8
+    
+    configs.append({
+        'name': f'PQ(m={m},k=256)-{metric}',
+        'factory': lambda m=m: VectorDatabase(
+            dimension=dimension,
+            metric=metric,
+            index_type='pq',
+            index_params={'n_subvectors': m, 'n_clusters': 256}
+        )
+    })
+    
+    return configs
+
+
+def main():
+    """Main benchmark runner."""
+    parser = argparse.ArgumentParser(
+        description="Benchmark m2vdb vector database indexes"
+    )
+    parser.add_argument(
+        '--n-queries',
+        type=int,
+        default=1000,
+        help='Number of queries to run (default: 1000)'
+    )
+    parser.add_argument(
+        '--skip-brute',
+        action='store_true',
+        help='Skip BruteForce index (faster, use when you only want to test PQ)'
+    )
+    parser.add_argument(
+        '--sift',
+        action='store_true',
+        help='Run only SIFT1M benchmarks'
+    )
+    parser.add_argument(
+        '--fasttext',
+        action='store_true',
+        help='Run only FastText benchmarks'
+    )
+    parser.add_argument(
+        '--k',
+        type=int,
+        default=10,
+        help='Number of nearest neighbors to search for (default: 10)'
+    )
+    
+    args = parser.parse_args()
+    
+    # If neither flag is set, run both
+    run_sift = args.sift or not args.fasttext
+    run_fasttext = args.fasttext or not args.sift
+    
+    console = Console()
+    runner = BenchmarkRunner(console=console)
+    
+    console.print("[bold green]m2vdb Benchmark Suite[/bold green]")
+    console.print(f"Queries: {args.n_queries:,}")
+    console.print(f"Search k: {args.k}\n")
+    
+    all_results = []
+    
+    # SIFT1M Benchmarks (128D, Euclidean)
+    if run_sift:
+        console.print("[bold]Loading SIFT1M dataset...[/bold]")
+        sift = load_sift1m(download=True)
+        
+        console.print("\n[bold cyan]=" * 10)
+        console.print("[bold cyan]SIFT1M BENCHMARKS (128D, Euclidean)")
+        console.print("[bold cyan]" + "=" * 10)
+        
+        sift_configs = create_benchmark_configs(
+            dimension=sift.dimension,
+            metric=sift.metric,
+            skip_brute=args.skip_brute
+        )
+        
+        sift_results = runner.compare_indexes(
+            configs=sift_configs,
+            dataset=sift,
+            k=args.k,
+            limit=None,  # Always use full corpus
+            n_queries=args.n_queries
+        )
+        all_results.extend(sift_results)
+    
+    # FastText Benchmarks (300D, Cosine)
+    if run_fasttext:
+        console.print("\n[bold]Loading FastText dataset...[/bold]")
+        fasttext = load_fasttext(download=True)
+        
+        console.print("\n[bold cyan]=" * 10)
+        console.print("[bold cyan]FASTTEXT BENCHMARKS (300D, Cosine)")
+        console.print("[bold cyan]" + "=" * 10)
+        
+        fasttext_configs = create_benchmark_configs(
+            dimension=fasttext.dimension,
+            metric=fasttext.metric,
+            skip_brute=args.skip_brute
+        )
+        
+        fasttext_results = runner.compare_indexes(
+            configs=fasttext_configs,
+            dataset=fasttext,
+            k=args.k,
+            limit=None,  # Always use full corpus
+            n_queries=args.n_queries
+        )
+        all_results.extend(fasttext_results)
+    
+    # Summary
+    console.print("\n[bold green]" + "=" * 60)
+    console.print("[bold green]BENCHMARK COMPLETE")
+    console.print("[bold green]" + "=" * 60)
+    console.print(f"\nRan {len(all_results)} benchmark(s)")
+    
+    # Print all results again for easy comparison
+    if len(all_results) > 1:
+        console.print("\n[bold]Summary:[/bold]")
+        runner.print_results(all_results)
+    
+    console.print("\n[bold green]✓ Done![/bold green]")
+    console.print("\n[dim]Tip: Run with --n-queries 100 for faster testing")
+    console.print("[dim]Tip: Run with --n-queries 10000 for full benchmark[/dim]")
+
+
+if __name__ == "__main__":
+    main()

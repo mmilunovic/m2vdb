@@ -4,7 +4,8 @@
 
 from typing import List, Optional, Dict
 import numpy as np
-from sklearn.cluster import KMeans
+from sklearn.cluster import MiniBatchKMeans
+from concurrent.futures import ThreadPoolExecutor
 
 from .base import Index
 
@@ -43,6 +44,9 @@ class PQIndex(Index):
         # Each codebook[m] contains k centroids for the m-th subvector slice
         self.codebooks: Optional[np.ndarray] = None
         
+        # K-means models: store trained models for fast predict() during encoding
+        self.kmeans_models: Optional[List[MiniBatchKMeans]] = None
+        
         # Quantized codes: compressed vector representations, shape (n_vectors, n_subvectors)
         # Each code[i, m] is an integer in [0, k-1] representing which centroid
         # the m-th subvector of vector i is closest to
@@ -67,17 +71,35 @@ class PQIndex(Index):
             similarities = np.dot(centroids, query) / (centroid_norms * query_norm + 1e-10)
             return 1 - similarities
         else:
-            # Euclidean distance
+            # Euclidean distance (not squared) to match BruteForce behavior
             return np.linalg.norm(centroids - query, axis=1)
 
-    def _encode_vector(self, vector: np.ndarray) -> np.ndarray:
-        """Encode a vector into PQ codes by finding nearest centroid for each subvector."""
-        codes = np.zeros(self.n_subvectors, dtype=np.int32)
+    def _encode_vector(self, vectors: np.ndarray) -> np.ndarray:
+        """
+        Encode vector(s) into PQ codes by finding nearest centroid for each subvector.
+        
+        Uses sklearn's predict() for fast encoding instead of manual distance computation.
+        
+        Args:
+            vectors: Single vector of shape (dim,) or batch of shape (n, dim)
+            
+        Returns:
+            Codes of shape (n_subvectors,) for single vector or (n, n_subvectors) for batch
+        """
+        # Handle both single vector and batch
+        is_single = vectors.ndim == 1
+        if is_single:
+            vectors = vectors.reshape(1, -1)
+        
+        n = vectors.shape[0]
+        codes = np.empty((n, self.n_subvectors), dtype=np.int32)
+        
+        # Use sklearn's predict() for fast encoding
         for m in range(self.n_subvectors):
-            sub_vector = vector[m * self.subvector_dim: (m + 1) * self.subvector_dim]
-            distances = self._compute_distances(self.codebooks[m], sub_vector)
-            codes[m] = np.argmin(distances)
-        return codes
+            sub_vectors = vectors[:, m * self.subvector_dim: (m + 1) * self.subvector_dim]
+            codes[:, m] = self.kmeans_models[m].predict(sub_vectors)
+        
+        return codes[0] if is_single else codes
 
     def build(self, vectors: np.ndarray, ids: List[str]) -> None:
         """
@@ -107,23 +129,53 @@ class PQIndex(Index):
             norms = np.where(norms == 0, 1e-10, norms)
             vectors = vectors / norms
 
-        # Learn codebooks: allocate numpy array directly
+        # Learn codebooks: train k-means for each subvector in parallel
         self.codebooks = np.empty((self.n_subvectors, self.n_clusters, self.subvector_dim))
-        for m in range(self.n_subvectors):
-            sub_vectors = vectors[:, m * self.subvector_dim: (m + 1) * self.subvector_dim]
-            kmeans = KMeans(n_clusters=self.n_clusters, n_init=10, random_state=42)
-            kmeans.fit(sub_vectors)
-            self.codebooks[m] = kmeans.cluster_centers_
-
-        # Quantize all vectors and build ID mappings in one pass
-        n = vectors.shape[0]
-        self.quantized_codes = np.empty((n, self.n_subvectors), dtype=np.int32)
-        self.ids = ids
-        self._id_to_idx = {}
+        self.kmeans_models = [None] * self.n_subvectors
         
-        for idx in range(n):
-            self.quantized_codes[idx] = self._encode_vector(vectors[idx])
-            self._id_to_idx[ids[idx]] = idx
+        def train_kmeans(m):
+            sub_vectors = vectors[:, m * self.subvector_dim: (m + 1) * self.subvector_dim]
+            
+            # Sample for training if dataset is large (speeds up k-means significantly)
+            # sample_size = len(sub_vectors) #min(100_000, len(sub_vectors))
+            # if len(sub_vectors) > sample_size:
+            #     indices = np.random.choice(len(sub_vectors), sample_size, replace=False)
+            #     sub_vectors_sample = sub_vectors[indices]
+            # else:
+            #     sub_vectors_sample = sub_vectors
+            
+            # Use MiniBatchKMeans for speed (10-20x faster than regular KMeans)
+            kmeans = MiniBatchKMeans(
+                n_clusters=self.n_clusters,
+                batch_size=min(10000, len(sub_vectors)),
+                n_init=10,
+                max_iter=100,
+                random_state=42
+            )
+            kmeans.fit(sub_vectors)
+            
+            # Normalize centroids if using cosine metric for better accuracy
+            centers = kmeans.cluster_centers_
+            if self.metric == 'cosine':
+                norms = np.linalg.norm(centers, axis=1, keepdims=True)
+                norms = np.where(norms == 0, 1e-10, norms)
+                centers = centers / norms
+            
+            return m, centers, kmeans
+        
+        # Train all subvectors in parallel
+        with ThreadPoolExecutor(max_workers=self.n_subvectors) as executor:
+            results = executor.map(train_kmeans, range(self.n_subvectors))
+            for m, centers, kmeans in results:
+                self.codebooks[m] = centers
+                self.kmeans_models[m] = kmeans
+
+        # Quantize all vectors using the unified encoding function
+        self.quantized_codes = self._encode_vector(vectors)
+        
+        # Build ID mappings
+        self.ids = ids
+        self._id_to_idx = {id: idx for idx, id in enumerate(ids)}
             
     def search(self, query: np.ndarray, k: int) -> List[tuple[str, float]]:
         """
@@ -144,6 +196,12 @@ class PQIndex(Index):
         if self.codebooks is None or len(self.ids) == 0 or k == 0:
             return []
         
+        # Normalize query if using cosine metric (must match build behavior)
+        if self.metric == 'cosine':
+            query_norm = np.linalg.norm(query)
+            if query_norm > 0:
+                query = query / query_norm
+        
         # Build distance lookup table: for each subvector, compute distances
         # from query subvector to all centroids in that codebook
         lookup_table = np.empty((self.n_subvectors, self.n_clusters))
@@ -151,16 +209,15 @@ class PQIndex(Index):
             sub_vector = query[m * self.subvector_dim: (m + 1) * self.subvector_dim]
             lookup_table[m] = self._compute_distances(self.codebooks[m], sub_vector)
 
-        # Compute approximate distances to all database vectors
+        # Compute approximate distances to all database vectors using vectorized lookup
         # For each vector, sum up the distances of its quantized subvectors
-        approx_distances = []
-        for idx, codes in enumerate(self.quantized_codes):
-            dist = sum(lookup_table[m, codes[m]] for m in range(self.n_subvectors))
-            approx_distances.append((self.ids[idx], dist))
-
-        # Sort and return top k
-        approx_distances.sort(key=lambda x: x[1])
-        return approx_distances[:k]
+        # Use advanced indexing: lookup_table[m, codes[:, m]] gets distances for all vectors at subvector m
+        distances = np.sum([lookup_table[m, self.quantized_codes[:, m]] for m in range(self.n_subvectors)], axis=0)
+        
+        # Get top k indices (sorted by distance)
+        top_k_indices = np.argsort(distances)[:k]
+        
+        return [(self.ids[idx], distances[idx]) for idx in top_k_indices]
 
     def add(self, id: str, vector: np.ndarray) -> None:
         """
