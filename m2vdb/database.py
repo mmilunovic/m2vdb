@@ -22,7 +22,8 @@ class VectorDatabase:
         dimension: int, 
         metric: str = 'cosine',
         index_type: str = 'brute_force',
-        rebuild_strategy: str = 'eager'
+        rebuild_strategy: str = 'eager',
+        index_params: Optional[Dict[str, Any]] = None
     ):
         """
         Args:
@@ -32,24 +33,27 @@ class VectorDatabase:
             rebuild_strategy: When to rebuild index
                 - 'eager': Rebuild on every upsert (default)
                 - 'threshold': Rebuild every N vectors (TODO: not yet implemented)
+            index_params: Optional parameters for the index (e.g., {'n_subvectors': 8, 'n_clusters': 256})
         """
         self.dimension = dimension
         self.metric = metric
         self.index_type = index_type
         self.rebuild_strategy = rebuild_strategy
         self._metadata: Dict[str, Dict[str, Any]] = {}
-        self.index = self._create_index(index_type, metric)
+        self.index = self._create_index(index_type, metric, index_params or {})
         
         # Store all vectors for rebuilding
         self._vectors: Dict[str, np.ndarray] = {}
         self._upserts_since_rebuild = 0
         
-    def _create_index(self, index_type: str, metric: str) -> Index:
+    def _create_index(self, index_type: str, metric: str, index_params: Dict[str, Any]) -> Index:
         """Factory for index implementations."""
         if index_type == 'brute_force':
             return BruteForceIndex(metric=metric)
         elif index_type == 'pq':
-            return PQIndex(n_subvectors=2, n_clusters=2, metric=metric)
+            n_subvectors = index_params.get('n_subvectors', 8)
+            n_clusters = index_params.get('n_clusters', 256)
+            return PQIndex(n_subvectors=n_subvectors, n_clusters=n_clusters, metric=metric)
         elif index_type == 'hnsw':
             raise NotImplementedError("HNSW not yet implemented")
         else:
