@@ -5,7 +5,7 @@ m2vdb: A simple, fast vector database in Python.
 from .client import M2VDBClient
 from .database import VectorDatabase
 from .models import SearchResult, Vector
-from .index import Index, BruteForceIndex
+from .indexes import Index, BruteForceIndex, PQIndex
 
 __version__ = "0.1.0"
 
@@ -16,4 +16,5 @@ __all__ = [
     "Vector",
     "Index",
     "BruteForceIndex",
+    "PQIndex",
 ]

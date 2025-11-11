@@ -5,7 +5,7 @@ High-level vector database API.
 from typing import List, Optional, Dict, Any
 import numpy as np
 
-from .index import Index, BruteForceIndex
+from .indexes import Index, BruteForceIndex, PQIndex
 from .models import SearchResult
 
 
@@ -40,7 +40,8 @@ class VectorDatabase:
         if index_type == 'brute_force':
             return BruteForceIndex(metric=metric)
         elif index_type == 'pq':
-            raise NotImplementedError("Product Quantization not yet implemented")
+            # Default PQ params: 8 subvectors, 256 clusters (8 bits per subvector)
+            return PQIndex(n_subvectors=8, n_clusters=256, metric=metric)
         elif index_type == 'hnsw':
             raise NotImplementedError("HNSW not yet implemented")
         else:
