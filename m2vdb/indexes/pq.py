@@ -76,8 +76,10 @@ class PQIndex(Index):
             similarities = np.dot(centroids, query)
             return 1 - similarities
         else:
-            # Euclidean distance (not squared) to match BruteForce behavior
-            return np.linalg.norm(centroids - query, axis=1)
+            # Return squared Euclidean distances; summing squared errors per subvector
+            # yields the standard PQ asymmetric distance for Euclidean metric.
+            diff = centroids - query
+            return np.sum(diff * diff, axis=1)
 
     def _encode_vector(self, vectors: np.ndarray) -> np.ndarray:
         """
@@ -142,7 +144,7 @@ class PQIndex(Index):
             sub_vectors = vectors[:, m * self.subvector_dim: (m + 1) * self.subvector_dim]
             
             # Sample for training if dataset is large (speeds up k-means)
-            sample_size = min(100_000, len(sub_vectors))
+            sample_size = min(300_000, len(sub_vectors))
             if len(sub_vectors) > sample_size:
                 indices = np.random.choice(len(sub_vectors), sample_size, replace=False)
                 sub_vectors_sample = sub_vectors[indices]
@@ -218,7 +220,14 @@ class PQIndex(Index):
         # Compute approximate distances to all database vectors using vectorized lookup
         # For each vector, sum up the distances of its quantized subvectors
         # Use advanced indexing: lookup_table[m, codes[:, m]] gets distances for all vectors at subvector m
-        distances = np.sum([lookup_table[m, self.quantized_codes[:, m]] for m in range(self.n_subvectors)], axis=0)
+        per_subvector = [lookup_table[m, self.quantized_codes[:, m]] for m in range(self.n_subvectors)]
+        if self.metric == 'euclidean':
+            # Sum squared distances across subvectors, then convert back to Euclidean distance
+            squared_distances = np.sum(per_subvector, axis=0)
+            distances = np.sqrt(squared_distances)
+        else:
+            # Cosine distances (1 - cosine similarity) aggregate additively
+            distances = np.sum(per_subvector, axis=0)
         
         # Get top k indices (sorted by distance)
         top_k_indices = np.argsort(distances)[:k]
