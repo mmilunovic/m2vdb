@@ -4,7 +4,7 @@
 
 from typing import List, Optional, Dict
 import numpy as np
-from sklearn.cluster import MiniBatchKMeans
+from sklearn.cluster import KMeans
 from concurrent.futures import ThreadPoolExecutor
 
 from .base import Index
@@ -45,7 +45,7 @@ class PQIndex(Index):
         self.codebooks: Optional[np.ndarray] = None
         
         # K-means models: store trained models for fast predict() during encoding
-        self.kmeans_models: Optional[List[MiniBatchKMeans]] = None
+        self.kmeans_models: Optional[List[KMeans]] = None
         
         # Quantized codes: compressed vector representations, shape (n_vectors, n_subvectors)
         # Each code[i, m] is an integer in [0, k-1] representing which centroid
@@ -63,12 +63,17 @@ class PQIndex(Index):
         return self.codebooks is not None
 
     def _compute_distances(self, centroids: np.ndarray, query: np.ndarray) -> np.ndarray:
-        """Compute distances between centroids and query based on metric."""
+        """
+        Compute distances between centroids and query based on metric.
+        
+        IMPORTANT: For cosine metric, assumes both centroids and query are already normalized.
+        This function is called during search after query normalization.
+        """
         if self.metric == 'cosine':
             # Cosine distance: 1 - cosine_similarity
-            centroid_norms = np.linalg.norm(centroids, axis=1)
-            query_norm = np.linalg.norm(query)
-            similarities = np.dot(centroids, query) / (centroid_norms * query_norm + 1e-10)
+            # Since both are normalized (unit vectors), cosine_similarity = dot product
+            # No need to divide by norms (they're both 1.0)
+            similarities = np.dot(centroids, query)
             return 1 - similarities
         else:
             # Euclidean distance (not squared) to match BruteForce behavior
@@ -136,30 +141,31 @@ class PQIndex(Index):
         def train_kmeans(m):
             sub_vectors = vectors[:, m * self.subvector_dim: (m + 1) * self.subvector_dim]
             
-            # Sample for training if dataset is large (speeds up k-means significantly)
-            # sample_size = len(sub_vectors) #min(100_000, len(sub_vectors))
-            # if len(sub_vectors) > sample_size:
-            #     indices = np.random.choice(len(sub_vectors), sample_size, replace=False)
-            #     sub_vectors_sample = sub_vectors[indices]
-            # else:
-            #     sub_vectors_sample = sub_vectors
+            # Sample for training if dataset is large (speeds up k-means)
+            sample_size = min(100_000, len(sub_vectors))
+            if len(sub_vectors) > sample_size:
+                indices = np.random.choice(len(sub_vectors), sample_size, replace=False)
+                sub_vectors_sample = sub_vectors[indices]
+            else:
+                sub_vectors_sample = sub_vectors
             
-            # Use MiniBatchKMeans for speed (10-20x faster than regular KMeans)
-            kmeans = MiniBatchKMeans(
+            # Use regular KMeans for better clustering quality
+            kmeans = KMeans(
                 n_clusters=self.n_clusters,
-                batch_size=min(10000, len(sub_vectors)),
                 n_init=10,
                 max_iter=100,
                 random_state=42
             )
-            kmeans.fit(sub_vectors)
+            kmeans.fit(sub_vectors_sample)
             
-            # Normalize centroids if using cosine metric for better accuracy
-            centers = kmeans.cluster_centers_
+            # CRITICAL FIX: Update model's centroids after normalization for cosine metric
+            centers = kmeans.cluster_centers_.copy()
             if self.metric == 'cosine':
                 norms = np.linalg.norm(centers, axis=1, keepdims=True)
                 norms = np.where(norms == 0, 1e-10, norms)
                 centers = centers / norms
+                # Update the model's centroids so predict() uses normalized centroids
+                kmeans.cluster_centers_ = centers
             
             return m, centers, kmeans
         
