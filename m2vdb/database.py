@@ -21,27 +21,35 @@ class VectorDatabase:
         self, 
         dimension: int, 
         metric: str = 'cosine',
-        index_type: str = 'brute_force'
+        index_type: str = 'brute_force',
+        rebuild_strategy: str = 'eager'
     ):
         """
         Args:
             dimension: Vector dimensionality
             metric: 'cosine' or 'euclidean'
             index_type: 'brute_force', 'pq', or 'hnsw'
+            rebuild_strategy: When to rebuild index
+                - 'eager': Rebuild on every upsert (default)
+                - 'threshold': Rebuild every N vectors (TODO: not yet implemented)
         """
         self.dimension = dimension
         self.metric = metric
         self.index_type = index_type
+        self.rebuild_strategy = rebuild_strategy
         self._metadata: Dict[str, Dict[str, Any]] = {}
         self.index = self._create_index(index_type, metric)
+        
+        # Store all vectors for rebuilding
+        self._vectors: Dict[str, np.ndarray] = {}
+        self._upserts_since_rebuild = 0
         
     def _create_index(self, index_type: str, metric: str) -> Index:
         """Factory for index implementations."""
         if index_type == 'brute_force':
             return BruteForceIndex(metric=metric)
         elif index_type == 'pq':
-            # Default PQ params: 8 subvectors, 256 clusters (8 bits per subvector)
-            return PQIndex(n_subvectors=8, n_clusters=256, metric=metric)
+            return PQIndex(n_subvectors=2, n_clusters=2, metric=metric)
         elif index_type == 'hnsw':
             raise NotImplementedError("HNSW not yet implemented")
         else:
@@ -56,38 +64,55 @@ class VectorDatabase:
         """Insert or update a vector in the database."""
         assert vector.shape == (self.dimension,), \
             f"Vector dimension {vector.shape} doesn't match {self.dimension}"
-        assert id not in self.index._id_to_idx, f"ID '{id}' already exists"
         
+        # Check if this is an update
+        if id in self._vectors:
+            raise ValueError(f"ID '{id}' already exists. Delete first to update.")
+        
+        # Store vector and metadata
+        self._vectors[id] = vector
         if metadata is not None:
             self._metadata[id] = metadata
+        self._upserts_since_rebuild += 1
         
-        self.index.add(id, vector.copy())
+        # Decide whether to rebuild or add incrementally
+        if self._should_rebuild():
+            self._rebuild_index()
+        else:
+            # Incremental add to existing index
+            self.index.add(id, vector)
     
-    def upsert_batch(
-        self, 
-        ids: List[str], 
-        vectors: np.ndarray,
-        metadata: Optional[List[Dict[str, Any]]] = None
-    ) -> None:
-        """Bulk upsert vectors using index.build() for better performance."""
-        assert len(ids) == vectors.shape[0], \
-            f"Number of IDs ({len(ids)}) must match number of vectors ({vectors.shape[0]})"
-        assert vectors.shape[1] == self.dimension, \
-            f"Vector dimension {vectors.shape[1]} doesn't match {self.dimension}"
+    def _rebuild_index(self) -> None:
+        """
+        Rebuild the entire index from stored vectors.
         
-        # Store metadata
-        if metadata:
-            for i, id in enumerate(ids):
-                if i < len(metadata) and metadata[i]:
-                    self._metadata[id] = metadata[i]
+        Called based on rebuild strategy. For PQ, this retrains k-means.
+        For BruteForce, this just reorganizes the array.
+        """
+        if len(self._vectors) == 0:
+            return
         
-        # Build index in one shot
+        # Extract all vectors and IDs in consistent order
+        ids = list(self._vectors.keys())
+        vectors = np.array([self._vectors[id] for id in ids])
+        
+        # Rebuild the index
         self.index.build(vectors, ids)
+        self._upserts_since_rebuild = 0
     
     def delete(self, id: str) -> bool:
         """Delete a vector by ID. Returns True if found and deleted."""
+        if id not in self._vectors:
+            return False
+        
+        # Remove from storage
+        del self._vectors[id]
         self._metadata.pop(id, None)
-        return self.index.delete(id)
+        
+        # Rebuild index without this vector
+        self._rebuild_index()
+        
+        return True
     
     def search(
         self, 
@@ -110,17 +135,40 @@ class VectorDatabase:
             for id, distance in raw_results
         ]
     
-    def size(self) -> int:
-        """Number of vectors in the database."""
-        return self.index.size()
+    def fetch(self, id: str) -> Optional[tuple[np.ndarray, Optional[Dict[str, Any]]]]:
+        """
+        Fetch a vector by ID.
+        
+        Returns:
+            Tuple of (vector, metadata) if found, None if not found
+        """
+        if id not in self._vectors:
+            return None
+        return self._vectors[id], self._metadata.get(id)
     
     def __len__(self) -> int:
-        return self.size()
+        """Number of vectors in the database."""
+        return self.index.size()
     
     def __repr__(self) -> str:
         return (
             f"VectorDatabase(dimension={self.dimension}, "
             f"metric={self.metric}, "
             f"index_type={self.index_type}, "
-            f"size={self.size()})"
+            f"size={len(self)})"
         )
+    
+    def _should_rebuild(self) -> bool:
+        """
+        Determine if index should be rebuilt based on strategy.
+        
+        Returns:
+            True if index should be rebuilt, False for incremental add
+        """
+        # Always build if index is empty
+        if not self.index.is_built:
+            return True
+        
+        # TODO: Implement threshold-based rebuilding
+        # For now, always rebuild (eager strategy)
+        return True

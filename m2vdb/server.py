@@ -21,7 +21,6 @@ from .models import (
     UpsertResponse,
     SearchRequest,
     SearchResponse,
-    DeleteRequest,
     DeleteResponse,
     FetchResponse,
 )
@@ -122,7 +121,7 @@ async def list_indexes(user_id: str = Depends(get_current_user)):
                 dimension=db.dimension,
                 metric=db.metric,
                 index_type=db.index_type,
-                size=db.size()
+                size=len(db)
             )
             for name, db in indexes[user_id].items()
         ]
@@ -141,7 +140,7 @@ async def get_index(name: str, user_id: str = Depends(get_current_user)):
         dimension=db.dimension,
         metric=db.metric,
         index_type=db.index_type,
-        size=db.size()
+        size=len(db)
     )
 
 
@@ -239,15 +238,12 @@ async def fetch_vector(
     """Fetch a vector by ID."""
     db = _get_index(name, user_id)
     
-    # Get vector from index
-    if id not in db.index._id_to_idx:
+    result = db.fetch(id)
+    if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vector '{id}' not found")
     
-    idx = db.index._id_to_idx[id]
-    vector = db.index.vectors[idx].tolist()
-    metadata = db._metadata.get(id)
-    
-    return FetchResponse(id=id, vector=vector, metadata=metadata)
+    vector, metadata = result
+    return FetchResponse(id=id, vector=vector.tolist(), metadata=metadata)
 
 
 @app.get("/")

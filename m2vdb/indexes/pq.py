@@ -52,6 +52,11 @@ class PQIndex(Index):
         
         # Dimensionality of each subvector (computed during build)
         self.subvector_dim: Optional[int] = None
+    
+    @property
+    def is_built(self) -> bool:
+        """Check if index has been built (codebooks trained)."""
+        return self.codebooks is not None
 
     def _compute_distances(self, centroids: np.ndarray, query: np.ndarray) -> np.ndarray:
         """Compute distances between centroids and query based on metric."""

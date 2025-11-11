@@ -43,6 +43,11 @@ class BruteForceIndex(Index):
         # This dictionary maps each ID to its position in the vectors array
         # Without this, operations like delete would require O(n) linear search
         self._id_to_idx: Dict[str, int] = {}
+    
+    @property
+    def is_built(self) -> bool:
+        """Check if index has been built (has vectors)."""
+        return self.vectors is not None and len(self.vectors) > 0
         
     def build(self, vectors: np.ndarray, ids: List[str]) -> None:
         """
@@ -123,6 +128,9 @@ class BruteForceIndex(Index):
         We update both mappings to keep them synchronized. The new vector goes
         at the end of the array, and we record its position in id_to_idx.
         """
+        if not self.is_built:
+            raise RuntimeError("Index must be built before adding vectors. Call build() first.")
+            
         if id in self._id_to_idx:
             raise ValueError(f"ID '{id}' already exists in the index")
         

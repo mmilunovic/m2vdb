@@ -5,16 +5,32 @@ import numpy as np
 class Index(ABC):
     """
     Abstract base class for vector index implementations.
+    
+    All indexes must track whether they have been built via the is_built property.
+    This allows VectorDatabase to decide when to call build() vs add().
     """
+    
+    @property
+    @abstractmethod
+    def is_built(self) -> bool:
+        """
+        Check if the index has been built/trained.
+        
+        Returns:
+            True if build() has been called and index is ready for use
+        """
+        pass
     
     @abstractmethod
     def build(self, vectors: np.ndarray, ids: List[str]) -> None:
         """
-        Build the search index structure from a batch of vectors.
+        Build/rebuild the search index structure from a batch of vectors.
         
-        This is typically called once after loading your initial dataset. For
-        algorithms like HNSW that have expensive index construction, this is
-        where that work happens. For brute force, this just stores the vectors.
+        This is the primary way to construct the index. For PQ, this trains
+        k-means clusters. For HNSW, this builds the graph. For brute force,
+        this just stores the vectors.
+        
+        After calling this, is_built must return True.
         
         Args:
             vectors: numpy array of shape (n, dim) containing all vectors
@@ -43,17 +59,24 @@ class Index(ABC):
     @abstractmethod
     def add(self, id: str, vector: np.ndarray) -> None:
         """
-        Add a single vector to the index after initial build.
+        Add a single vector to a built index.
         
-        This allows incremental updates to the index. Different algorithms
-        handle this with different efficiency:
+        This allows incremental updates after build(). Behavior:
+        - If index not built: should raise RuntimeError
+        - If index built: adds vector using existing structure
+        
+        Different algorithms handle this with different efficiency:
         - Brute force: O(1) append operation
-        - Product Quantization: need to quantize and add to codebook regions
-        - HNSW: need to insert into graph with link updates
+        - Product Quantization: quantize using existing codebooks and append
+        - HNSW: insert into graph with link updates
         
         Args:
             id: unique string ID for this vector
             vector: vector of shape (dim,) to add
+            
+        Raises:
+            RuntimeError: if index not built (is_built == False)
+            ValueError: if ID already exists
         """
         pass
     
