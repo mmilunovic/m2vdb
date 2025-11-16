@@ -56,6 +56,17 @@ def create_benchmark_configs(dimension: int, metric: str, skip_brute: bool = Fal
             )
         })
     
+    # RustBruteForce (Rust implementation)
+    if not skip_brute:
+        configs.append({
+            'name': f'RustBruteForce-{metric}',
+            'factory': lambda: VectorDatabase(
+                dimension=dimension,
+                metric=metric,
+                index_type='rust_brute_force'
+            )
+        })
+    
     # PQ: choose subvectors based on dimension
     # SIFT (128D): m=8 → 16D per subvector
     # FastText (300D): m=10 → 30D per subvector

@@ -5,7 +5,7 @@ High-level vector database API.
 from typing import List, Optional, Dict, Any
 import numpy as np
 
-from .indexes import Index, BruteForceIndex, PQIndex
+from .indexes import Index, BruteForceIndex, PQIndex, RustBruteForceIndex
 from .models import SearchResult
 
 
@@ -50,6 +50,8 @@ class VectorDatabase:
         """Factory for index implementations."""
         if index_type == 'brute_force':
             return BruteForceIndex(metric=metric)
+        elif index_type == 'rust_brute_force':
+            return RustBruteForceIndex(metric=metric)
         elif index_type == 'pq':
             n_subvectors = index_params.get('n_subvectors', 8)
             n_clusters = index_params.get('n_clusters', 256)
