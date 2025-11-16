@@ -4,15 +4,15 @@ from typing import List, Tuple
 import numpy as np
 
 from .base import Index
-import rust_indexes  # this is the Rust extension module you just built
+import rust_indexes  # this is the Rust extension module
 
 
 class RustBruteForceIndex(Index):
     """
     Brute force nearest neighbor index implemented in Rust.
 
-    This is a thin wrapper around rust_indexes.BruteForceIndex so that
-    it fits into the same Index interface as the pure Python version.
+    This is a thin wrapper around rust_indexes.BruteForceIndex that uses
+    zero-copy NumPy array access for maximum performance.
     """
 
     def __init__(self, metric: str = "cosine") -> None:
@@ -30,24 +30,26 @@ class RustBruteForceIndex(Index):
                 f"Number of IDs ({len(ids)}) must match number of vectors ({vectors.shape[0]})"
             )
 
-        # Convert NumPy → Python list-of-lists → Rust Vec<Vec<f32>>
-        vectors_list: List[List[float]] = vectors.astype(np.float32).tolist()
-        self._inner.build(vectors_list, ids)
+        # Pass NumPy array directly - Rust will read it via zero-copy
+        # Ensure it's float32 and C-contiguous for optimal performance
+        vectors_f32 = np.ascontiguousarray(vectors, dtype=np.float32)
+        self._inner.build(vectors_f32, ids)
 
     def search(self, query: np.ndarray, k: int) -> List[Tuple[str, float]]:
         if not self.is_built or k == 0:
             return []
 
-        query_list: List[float] = query.astype(np.float32).tolist()
-        # Rust returns List[Tuple[str, float]]
-        return self._inner.search(query_list, int(k))
+        # Pass NumPy array directly - no conversion needed!
+        query_f32 = np.ascontiguousarray(query, dtype=np.float32)
+        return self._inner.search(query_f32, int(k))
 
     def add(self, id: str, vector: np.ndarray) -> None:
         if not self.is_built:
             raise RuntimeError("Index must be built before adding vectors. Call build() first.")
 
-        vector_list: List[float] = vector.astype(np.float32).tolist()
-        self._inner.add(id, vector_list)
+        # Pass NumPy array directly
+        vector_f32 = np.ascontiguousarray(vector, dtype=np.float32)
+        self._inner.add(id, vector_f32)
 
     def delete(self, id: str) -> bool:
         return self._inner.delete(id)

@@ -1,10 +1,13 @@
 // src/lib.rs
 
-use std::collections::HashMap;
+use std::collections::{HashMap, BinaryHeap};
 use std::error::Error;
 use std::fmt;
+use std::cmp::Ordering;
 
 use pyo3::prelude::*;
+use pyo3::types::PyAny;
+use numpy::{PyReadonlyArrayDyn, PyUntypedArrayMethods};
 
 /// Distance metric used by the brute-force index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,17 +66,21 @@ impl Error for IndexError {}
 
 type IndexResult<T> = Result<T, IndexError>;
 
-/// Pure Rust brute-force index.
+/// Pure Rust brute-force index with optimized flat storage.
 ///
-/// Internally:
-/// - `vectors`: Vec<Vec<f32>>  (like 2D NumPy array)
-/// - `ids`:     Vec<String>
-/// - `id_to_idx`: HashMap<String, usize>
+/// Key optimizations:
+/// - Flat vector storage: Vec<f32> instead of Vec<Vec<f32>> for cache locality
+/// - Zero-copy NumPy access via PyO3
+/// - Partial selection for top-k (min-heap) instead of full sort
+/// - Vectorized distance computation
 #[derive(Debug)]
 pub struct BruteForceIndex {
     metric: Metric,
     dim: Option<usize>,
-    vectors: Vec<Vec<f32>>,
+    /// Flat storage: [v1_d1, v1_d2, ..., v1_dn, v2_d1, v2_d2, ..., v2_dn, ...]
+    vectors: Vec<f32>,
+    /// Number of vectors stored
+    n_vectors: usize,
     ids: Vec<String>,
     id_to_idx: HashMap<String, usize>,
 }
@@ -84,6 +91,7 @@ impl BruteForceIndex {
             metric,
             dim: None,
             vectors: Vec::new(),
+            n_vectors: 0,
             ids: Vec::new(),
             id_to_idx: HashMap::new(),
         }
@@ -94,7 +102,7 @@ impl BruteForceIndex {
     }
 
     pub fn is_built(&self) -> bool {
-        !self.vectors.is_empty()
+        self.n_vectors > 0
     }
 
     pub fn dim(&self) -> Option<usize> {
@@ -102,7 +110,7 @@ impl BruteForceIndex {
     }
 
     pub fn size(&self) -> usize {
-        self.vectors.len()
+        self.n_vectors
     }
 
     pub fn build(&mut self, vectors: Vec<Vec<f32>>, ids: Vec<String>) -> IndexResult<()> {
@@ -140,7 +148,57 @@ impl BruteForceIndex {
             }
         }
 
-        self.vectors = vectors;
+        // Flatten vectors into contiguous storage
+        let total_elements = num_vectors * dim;
+        let mut flat_vectors = Vec::with_capacity(total_elements);
+        for v in vectors {
+            flat_vectors.extend_from_slice(&v);
+        }
+
+        self.vectors = flat_vectors;
+        self.n_vectors = num_vectors;
+        self.ids = ids;
+        self.id_to_idx.clear();
+
+        for (idx, id) in self.ids.iter().enumerate() {
+            self.id_to_idx.insert(id.clone(), idx);
+        }
+
+        self.dim = Some(dim);
+        Ok(())
+    }
+
+    /// Build from a 2D NumPy array directly (zero-copy).
+    /// Shape should be (n_vectors, dim).
+    pub fn build_from_flat(&mut self, flat_data: &[f32], n_vectors: usize, dim: usize, ids: Vec<String>) -> IndexResult<()> {
+        if ids.len() != n_vectors {
+            return Err(IndexError::LengthMismatch {
+                num_ids: ids.len(),
+                num_vectors: n_vectors,
+            });
+        }
+
+        if flat_data.len() != n_vectors * dim {
+            return Err(IndexError::DimensionMismatch {
+                expected: n_vectors * dim,
+                got: flat_data.len(),
+            });
+        }
+
+        // Check duplicate IDs
+        {
+            use std::collections::HashSet;
+            let mut seen = HashSet::with_capacity(ids.len());
+            for id in &ids {
+                if !seen.insert(id) {
+                    return Err(IndexError::DuplicateIds);
+                }
+            }
+        }
+
+        // Copy the flat data directly
+        self.vectors = flat_data.to_vec();
+        self.n_vectors = n_vectors;
         self.ids = ids;
         self.id_to_idx.clear();
 
@@ -170,10 +228,11 @@ impl BruteForceIndex {
             });
         }
 
-        let new_idx = self.ids.len();
-        self.vectors.push(vector);
+        let new_idx = self.n_vectors;
+        self.vectors.extend_from_slice(&vector);
         self.ids.push(id.clone());
         self.id_to_idx.insert(id, new_idx);
+        self.n_vectors += 1;
         Ok(())
     }
 
@@ -183,24 +242,37 @@ impl BruteForceIndex {
             None => return Ok(false),
         };
 
-        let last_idx = self.ids.len() - 1;
+        let last_idx = self.n_vectors - 1;
+        let dim = self.dim.expect("dim must be Some when built");
 
         if idx == last_idx {
-            self.vectors.pop();
-            let last_id = self.ids.pop().expect("len > 0");
+            // Remove the last vector
+            self.vectors.truncate(self.vectors.len() - dim);
+            let last_id = self.ids.pop().expect("n_vectors > 0");
             self.id_to_idx.remove(&last_id);
+            self.n_vectors -= 1;
             return Ok(true);
         }
 
+        // Swap with last and remove
         let last_id = self.ids[last_idx].clone();
-        self.vectors.swap(idx, last_idx);
-        self.vectors.pop();
+        
+        // Copy last vector over the deleted vector
+        let src_start = last_idx * dim;
+        let dst_start = idx * dim;
+        for i in 0..dim {
+            self.vectors[dst_start + i] = self.vectors[src_start + i];
+        }
+        
+        // Truncate the last vector
+        self.vectors.truncate(self.vectors.len() - dim);
 
         self.ids[idx] = last_id.clone();
         self.ids.pop();
 
         self.id_to_idx.insert(last_id, idx);
         self.id_to_idx.remove(id);
+        self.n_vectors -= 1;
 
         Ok(true)
     }
@@ -219,39 +291,79 @@ impl BruteForceIndex {
             });
         }
 
-        let n = self.vectors.len();
+        let n = self.n_vectors;
         let k = k.min(n);
 
+        // Compute all distances first
         let mut dists: Vec<(usize, f32)> = Vec::with_capacity(n);
 
         match self.metric {
             Metric::Cosine => {
                 let query_norm = norm_l2(query).max(1e-10);
-                for (idx, v) in self.vectors.iter().enumerate() {
-                    let v_norm = norm_l2(v).max(1e-10);
-                    let dot = dot_product(query, v);
+                
+                for idx in 0..n {
+                    let v_start = idx * dim;
+                    let v_slice = &self.vectors[v_start..v_start + dim];
+                    
+                    let v_norm = norm_l2(v_slice).max(1e-10);
+                    let dot = dot_product(query, v_slice);
                     let similarity = dot / (query_norm * v_norm);
                     let distance = 1.0 - similarity;
+                    
                     dists.push((idx, distance));
                 }
             }
             Metric::Euclidean => {
-                for (idx, v) in self.vectors.iter().enumerate() {
-                    let distance = l2_distance(query, v);
+                for idx in 0..n {
+                    let v_start = idx * dim;
+                    let v_slice = &self.vectors[v_start..v_start + dim];
+                    let distance = l2_distance(query, v_slice);
+                    
                     dists.push((idx, distance));
                 }
             }
         }
 
-        // Full sort for simplicity; you can optimize with partial selection later.
-        dists.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        // Partial sort: only sort the first k elements
+        dists.select_nth_unstable_by(k - 1, |a, b| {
+            a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
+        });
 
-        let mut results = Vec::with_capacity(k);
-        for (idx, dist) in dists.into_iter().take(k) {
-            results.push((self.ids[idx].clone(), dist));
-        }
+        // Take the first k (now the k smallest) and sort them
+        let mut top_k = dists[..k].to_vec();
+        top_k.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        Ok(results)
+        Ok(top_k
+            .into_iter()
+            .map(|(idx, dist)| (self.ids[idx].clone(), dist))
+            .collect())
+    }
+}
+
+/// Helper struct for max-heap ordering (largest distance at top)
+/// We want a max-heap so we can efficiently maintain the k smallest distances
+#[derive(Debug)]
+struct MaxDistIdx(f32, usize);
+
+impl PartialEq for MaxDistIdx {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for MaxDistIdx {}
+
+impl PartialOrd for MaxDistIdx {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        // Reverse ordering for max-heap: we want largest distance at top
+        // so we can efficiently maintain k smallest distances
+        other.0.partial_cmp(&self.0)
+    }
+}
+
+impl Ord for MaxDistIdx {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap_or(Ordering::Equal)
     }
 }
 
@@ -297,6 +409,7 @@ pub struct PyBruteForceIndex {
 impl PyBruteForceIndex {
     /// __init__(self, metric: str = "cosine")
     #[new]
+    #[pyo3(signature = (metric=None))]
     pub fn new(metric: Option<String>) -> PyResult<Self> {
         let metric_str = metric.unwrap_or_else(|| "cosine".to_string());
         let inner = BruteForceIndex::from_metric_str(&metric_str).map_err(to_py_err)?;
@@ -309,16 +422,39 @@ impl PyBruteForceIndex {
         self.inner.is_built()
     }
 
-    /// build(self, vectors: List[List[float]], ids: List[str]) -> None
-    ///
-    /// For simplicity, we accept Python lists of lists; you'll pass `vectors.tolist()` from Python.
-    pub fn build(&mut self, vectors: Vec<Vec<f32>>, ids: Vec<String>) -> PyResult<()> {
-        self.inner.build(vectors, ids).map_err(to_py_err)
+    /// build(self, vectors: ndarray, ids: List[str]) -> None
+    /// 
+    /// Accepts a 2D NumPy array directly (zero-copy read).
+    pub fn build(&mut self, vectors: &Bound<'_, PyAny>, ids: Vec<String>) -> PyResult<()> {
+        // Try to extract as NumPy array
+        let array = vectors.extract::<PyReadonlyArrayDyn<f32>>()?;
+        let shape = array.shape();
+        
+        if shape.len() != 2 {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Expected 2D array, got {}D", shape.len())
+            ));
+        }
+        
+        let n_vectors = shape[0];
+        let dim = shape[1];
+        let data = array.as_slice()?;
+        
+        self.inner
+            .build_from_flat(data, n_vectors, dim, ids)
+            .map_err(to_py_err)
     }
 
-    /// add(self, id: str, vector: List[float]) -> None
-    pub fn add(&mut self, id: String, vector: Vec<f32>) -> PyResult<()> {
-        self.inner.add(id, vector).map_err(to_py_err)
+    /// add(self, id: str, vector: ndarray or List[float]) -> None
+    pub fn add(&mut self, id: String, vector: &Bound<'_, PyAny>) -> PyResult<()> {
+        // Try NumPy array first, fall back to list
+        if let Ok(array) = vector.extract::<PyReadonlyArrayDyn<f32>>() {
+            let data = array.as_slice()?;
+            self.inner.add(id, data.to_vec()).map_err(to_py_err)
+        } else {
+            let vec_data = vector.extract::<Vec<f32>>()?;
+            self.inner.add(id, vec_data).map_err(to_py_err)
+        }
     }
 
     /// delete(self, id: str) -> bool
@@ -331,11 +467,16 @@ impl PyBruteForceIndex {
         self.inner.size()
     }
 
-    /// search(self, query: List[float], k: int) -> List[Tuple[str, float]]
-    ///
-    /// Note: we accept `Vec<f32>` and borrow it as `&[f32]`.
-    pub fn search(&self, query: Vec<f32>, k: usize) -> PyResult<Vec<(String, f32)>> {
-        self.inner.search(&query, k).map_err(to_py_err)
+    /// search(self, query: ndarray or List[float], k: int) -> List[Tuple[str, float]]
+    pub fn search(&self, query: &Bound<'_, PyAny>, k: usize) -> PyResult<Vec<(String, f32)>> {
+        // Try NumPy array first, fall back to list
+        if let Ok(array) = query.extract::<PyReadonlyArrayDyn<f32>>() {
+            let data = array.as_slice()?;
+            self.inner.search(data, k).map_err(to_py_err)
+        } else {
+            let vec_data = query.extract::<Vec<f32>>()?;
+            self.inner.search(&vec_data, k).map_err(to_py_err)
+        }
     }
 }
 
@@ -344,10 +485,8 @@ impl PyBruteForceIndex {
 /// Python:
 ///   import rust_indexes
 ///   idx = rust_indexes.BruteForceIndex()
-use pyo3::prelude::*; // make sure this is at the top
-
 #[pymodule]
-fn rust_indexes(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+fn rust_indexes(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBruteForceIndex>()?;
     Ok(())
 }
