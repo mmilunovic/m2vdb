@@ -48,7 +48,7 @@ def create_benchmark_configs(dimension: int, metric: str, skip_brute: bool = Fal
     # BruteForce (baseline)
     if not skip_brute:
         configs.append({
-            'name': f'BruteForce-{metric}',
+            'name': f'PyBruteForce-{metric}',
             'factory': lambda: VectorDatabase(
                 dimension=dimension,
                 metric=metric,
