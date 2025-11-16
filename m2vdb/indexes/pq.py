@@ -15,7 +15,7 @@ class PQIndex(Index):
     
     Product Quantization compresses vectors by splitting them into subvectors and
     quantizing each subvector independently using learned codebooks. This achieves
-    significant memory savings while maintaining reasonable search accuracy.
+    significant memory savings while maintaining somewhat reasonable search accuracy.
     
     Memory usage: O(n * m * log2(k)) bits instead of O(n * d * 32) bits
     where n=num_vectors, m=num_subvectors, k=clusters_per_subvector, d=dimensionality
@@ -85,7 +85,7 @@ class PQIndex(Index):
         """
         Encode vector(s) into PQ codes by finding nearest centroid for each subvector.
         
-        Uses sklearn's predict() for fast encoding instead of manual distance computation.
+        Uses sklearn's predict() for fast encoding. Parallelizes for batch encoding.
         
         Args:
             vectors: Single vector of shape (dim,) or batch of shape (n, dim)
@@ -101,10 +101,21 @@ class PQIndex(Index):
         n = vectors.shape[0]
         codes = np.empty((n, self.n_subvectors), dtype=np.int32)
         
-        # Use sklearn's predict() for fast encoding
-        for m in range(self.n_subvectors):
-            sub_vectors = vectors[:, m * self.subvector_dim: (m + 1) * self.subvector_dim]
-            codes[:, m] = self.kmeans_models[m].predict(sub_vectors)
+        # OPTIMIZED: Parallelize encoding for large batches
+        if n > 100:  # Only parallelize for batches (avoid overhead for small n)
+            def encode_subvector(m):
+                sub_vectors = vectors[:, m * self.subvector_dim: (m + 1) * self.subvector_dim]
+                return m, self.kmeans_models[m].predict(sub_vectors)
+            
+            with ThreadPoolExecutor(max_workers=self.n_subvectors) as executor:
+                results = executor.map(encode_subvector, range(self.n_subvectors))
+                for m, pred in results:
+                    codes[:, m] = pred
+        else:
+            # Sequential for single vectors or small batches
+            for m in range(self.n_subvectors):
+                sub_vectors = vectors[:, m * self.subvector_dim: (m + 1) * self.subvector_dim]
+                codes[:, m] = self.kmeans_models[m].predict(sub_vectors)
         
         return codes[0] if is_single else codes
 
@@ -161,13 +172,16 @@ class PQIndex(Index):
             kmeans.fit(sub_vectors_sample)
             
             # CRITICAL FIX: Update model's centroids after normalization for cosine metric
-            centers = kmeans.cluster_centers_.copy()
             if self.metric == 'cosine':
+                centers = kmeans.cluster_centers_.copy()
                 norms = np.linalg.norm(centers, axis=1, keepdims=True)
                 norms = np.where(norms == 0, 1e-10, norms)
                 centers = centers / norms
                 # Update the model's centroids so predict() uses normalized centroids
                 kmeans.cluster_centers_ = centers
+            else:
+                # No copy needed for euclidean
+                centers = kmeans.cluster_centers_
             
             return m, centers, kmeans
         
@@ -207,32 +221,50 @@ class PQIndex(Index):
         # Normalize query if using cosine metric (must match build behavior)
         if self.metric == 'cosine':
             query_norm = np.linalg.norm(query)
-            if query_norm > 0:
+            if query_norm > 1e-10:
                 query = query / query_norm
         
-        # Build distance lookup table: for each subvector, compute distances
-        # from query subvector to all centroids in that codebook
-        lookup_table = np.empty((self.n_subvectors, self.n_clusters))
-        for m in range(self.n_subvectors):
-            sub_vector = query[m * self.subvector_dim: (m + 1) * self.subvector_dim]
-            lookup_table[m] = self._compute_distances(self.codebooks[m], sub_vector)
+        # OPTIMIZED: Vectorized lookup table construction
+        # Reshape query into subvectors: (n_subvectors, subvector_dim)
+        query_subvecs = query.reshape(self.n_subvectors, self.subvector_dim)
+        
+        if self.metric == 'cosine':
+            # Vectorized cosine distance computation
+            # codebooks: (m, k, d), query_subvecs: (m, d) -> (m, k)
+            similarities = np.einsum('mki,mi->mk', self.codebooks, query_subvecs)
+            lookup_table = 1 - similarities
+        else:
+            # Vectorized squared Euclidean distance computation
+            # codebooks: (m, k, d), query_subvecs: (m, 1, d) -> (m, k, d)
+            diff = self.codebooks - query_subvecs[:, np.newaxis, :]
+            lookup_table = np.sum(diff * diff, axis=2)  # (m, k)
 
-        # Compute approximate distances to all database vectors using vectorized lookup
-        # For each vector, sum up the distances of its quantized subvectors
-        # Use advanced indexing: lookup_table[m, codes[:, m]] gets distances for all vectors at subvector m
-        per_subvector = [lookup_table[m, self.quantized_codes[:, m]] for m in range(self.n_subvectors)]
+        # OPTIMIZED: Direct vectorized distance aggregation (no list comprehension)
+        # Create index arrays for advanced indexing
+        m_indices = np.arange(self.n_subvectors)[:, np.newaxis]  # (m, 1)
+        code_indices = self.quantized_codes.T  # (m, n_vectors)
+        
+        # Single vectorized lookup: (m, n_vectors)
+        distances_per_subvec = lookup_table[m_indices, code_indices]
+        
         if self.metric == 'euclidean':
             # Sum squared distances across subvectors, then convert back to Euclidean distance
-            squared_distances = np.sum(per_subvector, axis=0)
-            distances = np.sqrt(squared_distances)
+            distances = np.sqrt(np.sum(distances_per_subvec, axis=0))
         else:
             # Cosine distances (1 - cosine similarity) aggregate additively
-            distances = np.sum(per_subvector, axis=0)
+            distances = np.sum(distances_per_subvec, axis=0)
         
-        # Get top k indices (sorted by distance)
-        top_k_indices = np.argsort(distances)[:k]
+        # OPTIMIZED: Use argpartition for efficient top-k selection
+        # argpartition is O(n) vs argsort's O(n log n)
+        n = len(distances)
+        k = min(k, n)  # Ensure k doesn't exceed array size
         
-        return [(self.ids[idx], distances[idx]) for idx in top_k_indices]
+        # Get k smallest distances (unsorted)
+        partition_indices = np.argpartition(distances, k-1)[:k]
+        # Sort just those k indices by their distances
+        top_k_indices = partition_indices[np.argsort(distances[partition_indices])]
+        
+        return [(self.ids[idx], float(distances[idx])) for idx in top_k_indices]
 
     def add(self, id: str, vector: np.ndarray) -> None:
         """
