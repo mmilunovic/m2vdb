@@ -129,6 +129,11 @@ def main():
         default=42,
         help='Random seed for reproducible query sampling (default: 42)'
     )
+    parser.add_argument(
+        '--no-cache',
+        action='store_true',
+        help='Force re-run of benchmarks, ignoring cached results'
+    )
     
     args = parser.parse_args()
     
@@ -137,7 +142,7 @@ def main():
     run_fasttext = args.fasttext or not args.sift
     
     console = Console()
-    runner = BenchmarkRunner()
+    runner = BenchmarkRunner(use_cache=not args.no_cache)
     
     console.print("[bold green]m2vdb Benchmark Suite[/bold green]")
     console.print(f"Queries: {args.n_queries:,}")

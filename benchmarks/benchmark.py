@@ -15,7 +15,8 @@ from rich.progress import track
 
 from m2vdb import VectorDatabase
 from .datasets import Dataset
-from .metrics import (
+# from benchmarks.cache import BenchmarkCache
+from benchmarks.metrics import (
     compute_recall,
     compute_latency_stats,
     measure_index_memory,
@@ -72,9 +73,14 @@ class BenchmarkRunner:
         runner.print_results([results])
     """
     
-    def __init__(self):
+    def __init__(self, use_cache: bool = True):
         """Initialize benchmark runner with its own console for output."""
         self.console = Console()
+        if use_cache:
+            from benchmarks.cache import BenchmarkCache
+            self.cache = BenchmarkCache()
+        else:
+            self.cache = None
     
     def benchmark_index(
         self,
@@ -103,6 +109,24 @@ class BenchmarkRunner:
         
         # Create index
         db = index_factory()
+
+        # Check Cache
+        if self.cache:
+            cached_result = self.cache.get(
+                db=db,
+                index_name=index_name,
+                dataset=dataset,
+                k=k,
+                n_queries=n_queries,
+                seed=seed
+            )
+            if cached_result:
+                self.console.print(f"  [green]✓ Found cached result[/green]")
+                self.console.print(f"  ✓ Built in {cached_result.build_time_ms:.1f}ms (cached)")
+                qps = cached_result.qps if cached_result.qps > 0 else 1.0
+                self.console.print(f"  ✓ Searched in {cached_result.n_vectors / qps:.2f}s ({cached_result.qps:.1f} QPS) (cached)")
+                self.console.print(f"  ✓ Recall@{k}: {cached_result.recall:.3f} (cached)")
+                return cached_result
         
         # Build index (measure time)
         self.console.print(f"  Building index with {len(dataset.base_vectors):,} vectors...")
@@ -176,7 +200,7 @@ class BenchmarkRunner:
         
         self.console.print(f"  ✓ Recall@{k}: {recall:.3f}")
         
-        return BenchmarkResult(
+        result = BenchmarkResult(
             index_name=index_name,
             dataset_name=dataset.name,
             build_time_ms=build_time_ms,
@@ -189,6 +213,12 @@ class BenchmarkRunner:
             dimension=dataset.dimension,
             k_searched=k
         )
+
+        # Save to Cache
+        if self.cache:
+            self.cache.save(result, db, n_queries, seed)
+            
+        return result
     
     def print_results(self, results: List[BenchmarkResult]) -> None:
         """
