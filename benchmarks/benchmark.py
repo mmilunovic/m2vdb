@@ -7,6 +7,7 @@ for different index types on various datasets.
 
 from dataclasses import dataclass
 from typing import List, Dict, Any, Callable, Optional
+import time
 import numpy as np
 from rich.console import Console
 from rich.table import Table
@@ -17,8 +18,7 @@ from .datasets import Dataset
 from .metrics import (
     compute_recall,
     compute_latency_stats,
-    measure_memory,
-    Timer,
+    measure_index_memory,
     compute_qps
 )
 
@@ -39,9 +39,9 @@ class BenchmarkResult:
     # Quality metrics
     recall: float
     
-    # Memory metrics
-    memory_mb: float
-    memory_per_vector_bytes: float
+    # Memory metrics (index structures only, not db._vectors)
+    index_mb: float  # Total index memory
+    bytes_per_vector: float  # Average bytes per vector
     
     # Config
     n_vectors: int
@@ -72,14 +72,9 @@ class BenchmarkRunner:
         runner.print_results([results])
     """
     
-    def __init__(self, console: Optional[Console] = None):
-        """
-        Initialize benchmark runner.
-        
-        Args:
-            console: Rich console for output (creates one if not provided)
-        """
-        self.console = console or Console()
+    def __init__(self):
+        """Initialize benchmark runner with its own console for output."""
+        self.console = Console()
     
     def benchmark_index(
         self,
@@ -87,7 +82,8 @@ class BenchmarkRunner:
         index_factory: Callable[[], VectorDatabase],
         dataset: Dataset,
         k: int = 10,
-        n_queries: Optional[int] = None
+        n_queries: Optional[int] = None,
+        seed: int = 42
     ) -> BenchmarkResult:
         """
         Benchmark a single index configuration on a dataset.
@@ -98,6 +94,7 @@ class BenchmarkRunner:
             dataset: Dataset to benchmark on
             k: Number of neighbors to search for
             n_queries: Number of queries to run (None = all queries in dataset)
+            seed: Random seed for reproducible query sampling
         
         Returns:
             BenchmarkResult with all metrics
@@ -107,43 +104,45 @@ class BenchmarkRunner:
         # Create index
         db = index_factory()
         
-        # Measure memory before indexing
-        mem_before = measure_memory()
-        
         # Build index (measure time)
         self.console.print(f"  Building index with {len(dataset.base_vectors):,} vectors...")
-        with Timer() as build_timer:
-            # Upsert all base vectors
-            ids = [f"vec_{i}" for i in range(len(dataset.base_vectors))]
-            
-            # Use batch upsert if available, otherwise loop
-            # For now, we'll use the internal rebuild to simulate batch
-            for i, (id, vec) in track(
-                enumerate(zip(ids, dataset.base_vectors)),
-                total=len(ids),
-                description="  Indexing",
-                console=self.console
-            ):
-                # Store directly in _vectors to avoid per-vector rebuilds
-                db._vectors[id] = vec
-            
-            # Now rebuild once
-            db._rebuild_index()
+        build_start = time.perf_counter()
         
-        build_time_ms = build_timer.elapsed_ms()
+        # Upsert all base vectors
+        ids = [f"vec_{i}" for i in range(len(dataset.base_vectors))]
         
-        # Measure memory after indexing
-        mem_after = measure_memory()
-        memory_mb = mem_after['rss_mb'] - mem_before['rss_mb']
-        memory_per_vector_bytes = (memory_mb * 1024 * 1024) / len(dataset.base_vectors)
+        # Use batch upsert if available, otherwise loop
+        # For now, we'll use the internal rebuild to simulate batch
+        for i, (id, vec) in track(
+            enumerate(zip(ids, dataset.base_vectors)),
+            total=len(ids),
+            description="  Indexing",
+            console=self.console
+        ):
+            # Store directly in _vectors to avoid per-vector rebuilds
+            db._vectors[id] = vec
+        
+        # Now rebuild once
+        db._rebuild_index()
+        
+        build_time_ms = (time.perf_counter() - build_start) * 1000
+        
+        # Measure actual index memory (not RSS which is unreliable)
+        mem_stats = measure_index_memory(db)
         
         self.console.print(f"  ✓ Built in {build_time_ms:.1f}ms")
-        self.console.print(f"  ✓ Memory: {memory_mb:.1f}MB ({memory_per_vector_bytes:.1f} bytes/vector)")
+        self.console.print(f"  ✓ Index memory: {mem_stats['index_mb']:.1f}MB ({mem_stats['bytes_per_vector']:.1f} bytes/vec)")
         
-        # Prepare queries
+        # Prepare queries with reproducible sampling
         query_vectors = dataset.query_vectors
-        if n_queries is not None:
-            query_vectors = query_vectors[:n_queries]
+        ground_truth = dataset.ground_truth
+        
+        if n_queries is not None and n_queries < len(query_vectors):
+            # Reproducible random sampling
+            rng = np.random.RandomState(seed)
+            indices = rng.choice(len(query_vectors), size=n_queries, replace=False)
+            query_vectors = query_vectors[indices]
+            ground_truth = ground_truth[indices]
         
         # Create ID to index mapping for recall computation
         id_to_idx = {id: i for i, id in enumerate(ids)}
@@ -159,9 +158,9 @@ class BenchmarkRunner:
             console=self.console
         ):
             # Search with requested k and measure latency
-            with Timer() as query_timer:
-                results = db.search(query_vec, k=k, return_metadata=False)
-            query_times.append(query_timer.elapsed)
+            query_start = time.perf_counter()
+            results = db.search(query_vec, k=k, return_metadata=False)
+            query_times.append(time.perf_counter() - query_start)
             predictions.append([r.id for r in results])
         
         # Compute metrics
@@ -173,7 +172,7 @@ class BenchmarkRunner:
         self.console.print(f"  ✓ Latency: p50={latency_stats['p50']:.2f}ms, p99={latency_stats['p99']:.2f}ms")
         
         # Compute recall@k (uses the k results we searched for)
-        recall = compute_recall(predictions, dataset.ground_truth, id_to_idx, k=k)
+        recall = compute_recall(predictions, ground_truth, id_to_idx, k=k)
         
         self.console.print(f"  ✓ Recall@{k}: {recall:.3f}")
         
@@ -184,8 +183,8 @@ class BenchmarkRunner:
             search_latency=latency_stats,
             qps=qps,
             recall=recall,
-            memory_mb=memory_mb,
-            memory_per_vector_bytes=memory_per_vector_bytes,
+            index_mb=mem_stats['index_mb'],
+            bytes_per_vector=mem_stats['bytes_per_vector'],
             n_vectors=len(dataset.base_vectors),
             dimension=dataset.dimension,
             k_searched=k
@@ -214,25 +213,23 @@ class BenchmarkRunner:
             self.console.print(f"\n[bold]Results for {dataset_name.upper()} ({dataset_results[0].n_vectors:,} vectors, {dataset_results[0].dimension}D)[/bold]\n")
             
             table = Table(show_header=True, header_style="bold magenta")
-            table.add_column("Index", style="cyan", width=15)
+            table.add_column("Index", style="cyan", width=20)
             table.add_column("Build (ms)", justify="right")
-            table.add_column("Memory (MB)", justify="right")
+            table.add_column("Index (MB)", justify="right")
             table.add_column("Bytes/Vec", justify="right")
             table.add_column("QPS", justify="right")
             table.add_column("p50 (ms)", justify="right")
-            table.add_column("p90 (ms)", justify="right")
             table.add_column("p99 (ms)", justify="right")
-            table.add_column("Recall", justify="right")
+            table.add_column("Recall@k", justify="right")
             
             for result in dataset_results:
                 table.add_row(
                     result.index_name,
                     f"{result.build_time_ms:,.0f}",
-                    f"{result.memory_mb:.1f}",
-                    f"{result.memory_per_vector_bytes:.0f}",
+                    f"{result.index_mb:.1f}",
+                    f"{result.bytes_per_vector:.0f}",
                     f"{result.qps:,.0f}",
                     f"{result.search_latency['p50']:.2f}",
-                    f"{result.search_latency['p90']:.2f}",
                     f"{result.search_latency['p99']:.2f}",
                     f"{result.recall:.3f}",
                 )
@@ -244,8 +241,8 @@ class BenchmarkRunner:
         configs: List[Dict[str, Any]],
         dataset: Dataset,
         k: int = 10,
-        limit: Optional[int] = None,
-        n_queries: Optional[int] = None
+        n_queries: Optional[int] = None,
+        seed: int = 42
     ) -> List[BenchmarkResult]:
         """
         Compare multiple index configurations on a single dataset.
@@ -254,55 +251,22 @@ class BenchmarkRunner:
             configs: List of dicts with 'name' and 'factory' keys
             dataset: Dataset to benchmark on
             k: Number of neighbors to search for (default: 10)
-            limit: Limit number of base vectors to index (None = all)
-            n_queries: Limit number of queries to run (None = all)
+            n_queries: Number of queries to run (None = all)
+            seed: Random seed for reproducible query sampling
         
         Returns:
             List of benchmark results
         """
-        # Apply limits to dataset
-        limited_dataset = dataset
-        
-        if limit is not None or n_queries is not None:
-            base_vectors = dataset.base_vectors[:limit] if limit else dataset.base_vectors
-            query_vectors = dataset.query_vectors[:n_queries] if n_queries else dataset.query_vectors
-            ground_truth = dataset.ground_truth[:n_queries] if n_queries else dataset.ground_truth
-            
-            # CRITICAL: If we limit base vectors, we need to filter ground truth
-            # Ground truth contains indices into the FULL dataset, but we only have
-            # a subset now. We must filter out any ground truth indices >= limit.
-            if limit is not None:
-                self.console.print(f"\n[yellow]⚠ Warning: Limiting base vectors to {limit:,}. Ground truth will be filtered.[/yellow]")
-                self.console.print(f"[yellow]   Recall may be lower than 1.0 even for BruteForce if true neighbors are outside the limit.[/yellow]\n")
-                
-                # Filter ground truth to only include indices < limit
-                filtered_gt = []
-                for gt_row in ground_truth:
-                    # Keep only valid indices
-                    valid_neighbors = [idx for idx in gt_row if idx < limit]
-                    # Pad with -1 to maintain shape (we'll ignore -1 in recall calculation)
-                    while len(valid_neighbors) < gt_row.shape[0]:
-                        valid_neighbors.append(-1)
-                    filtered_gt.append(valid_neighbors)
-                ground_truth = np.array(filtered_gt, dtype=np.int32)
-            
-            limited_dataset = Dataset(
-                name=dataset.name,
-                base_vectors=base_vectors,
-                query_vectors=query_vectors,
-                ground_truth=ground_truth,
-                dimension=dataset.dimension,
-                metric=dataset.metric
-            )
-        
         results = []
         
         for config in configs:
             result = self.benchmark_index(
                 index_name=config['name'],
                 index_factory=config['factory'],
-                dataset=limited_dataset,
-                k=k
+                dataset=dataset,
+                k=k,
+                n_queries=n_queries,
+                seed=seed
             )
             results.append(result)
         
