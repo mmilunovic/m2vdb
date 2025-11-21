@@ -5,7 +5,7 @@ High-level vector database API.
 from typing import List, Optional, Dict, Any
 import numpy as np
 
-from .indexes import Index, BruteForceIndex, PQIndex
+from .indexes import Index, BruteForceIndex, PQIndex, RustBruteForceIndex
 from .models import SearchResult
 
 
@@ -39,8 +39,9 @@ class VectorDatabase:
         self.metric = metric
         self.index_type = index_type
         self.rebuild_strategy = rebuild_strategy
+        self.index_params = index_params or {}
         self._metadata: Dict[str, Dict[str, Any]] = {}
-        self.index = self._create_index(index_type, metric, index_params or {})
+        self.index = self._create_index(index_type, metric, self.index_params)
         
         # Store all vectors for rebuilding
         self._vectors: Dict[str, np.ndarray] = {}
@@ -50,10 +51,10 @@ class VectorDatabase:
         """Factory for index implementations."""
         if index_type == 'brute_force':
             return BruteForceIndex(metric=metric)
+        elif index_type == 'rust_brute_force':
+            return RustBruteForceIndex(metric=metric)
         elif index_type == 'pq':
-            n_subvectors = index_params.get('n_subvectors', 8)
-            n_clusters = index_params.get('n_clusters', 256)
-            return PQIndex(n_subvectors=n_subvectors, n_clusters=n_clusters, metric=metric)
+            return PQIndex(metric=metric, **index_params)
         elif index_type == 'hnsw':
             raise NotImplementedError("HNSW not yet implemented")
         else:

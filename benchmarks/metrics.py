@@ -2,11 +2,14 @@
 Metrics computation for benchmarking vector search algorithms.
 """
 
+import sys
 import time
-from typing import List, Tuple, Dict
+from typing import List, Dict
 import numpy as np
 import psutil
 import os
+
+from m2vdb import VectorDatabase
 
 
 def compute_recall(
@@ -110,25 +113,6 @@ def measure_memory(pid: int = None) -> Dict[str, float]:
     }
 
 
-class Timer:
-    """Context manager for timing code blocks."""
-    
-    def __init__(self):
-        self.start_time = None
-        self.elapsed = None
-    
-    def __enter__(self):
-        self.start_time = time.perf_counter()
-        return self
-    
-    def __exit__(self, *args):
-        self.elapsed = time.perf_counter() - self.start_time
-    
-    def elapsed_ms(self) -> float:
-        """Get elapsed time in milliseconds."""
-        return self.elapsed * 1000 if self.elapsed is not None else 0.0
-
-
 def compute_qps(n_queries: int, total_time: float) -> float:
     """
     Compute queries per second.
@@ -141,3 +125,66 @@ def compute_qps(n_queries: int, total_time: float) -> float:
         Queries per second
     """
     return n_queries / total_time if total_time > 0 else 0.0
+
+
+def measure_index_memory(db: VectorDatabase) -> Dict[str, float]:
+    """
+    Measure memory used by index data structures only.
+    
+    This measures only the index's internal structures, not db._vectors
+    (which is a VectorDatabase implementation detail):
+    
+    - BruteForce: vectors array stored in index.vectors
+    - PQ: codebooks + quantized codes (much smaller than full vectors!)
+    - RustBruteForce: vectors + norms stored in Rust
+    
+    Args:
+        db: VectorDatabase instance to measure
+    
+    Returns:
+        Dict with:
+        - index_mb: Total index memory in MB
+        - bytes_per_vector: Average index bytes per vector
+    """
+    index_bytes = 0
+    
+    # Get the index
+    index = db.index
+    
+    # BruteForce: stores full vectors array
+    if hasattr(index, 'vectors') and index.vectors is not None:
+        index_bytes += index.vectors.nbytes
+    
+    # PQ: stores codebooks and quantized codes
+    if hasattr(index, 'codebooks') and index.codebooks is not None:
+        index_bytes += index.codebooks.nbytes
+    
+    if hasattr(index, 'quantized_codes') and index.quantized_codes is not None:
+        index_bytes += index.quantized_codes.nbytes
+    
+    # RustBruteForce or other indexes might have vector_norms
+    if hasattr(index, 'vector_norms') and index.vector_norms is not None:
+        if hasattr(index.vector_norms, 'nbytes'):
+            index_bytes += index.vector_norms.nbytes
+        else:
+            index_bytes += sys.getsizeof(index.vector_norms)
+    
+    # IDs list (all indexes need this for mapping results back)
+    if hasattr(index, 'ids') and index.ids:
+        index_bytes += sys.getsizeof(index.ids)
+        for id_str in index.ids:
+            index_bytes += sys.getsizeof(id_str)
+    
+    # ID to index mapping (for efficient lookups)
+    if hasattr(index, '_id_to_idx') and index._id_to_idx:
+        index_bytes += sys.getsizeof(index._id_to_idx)
+        for k, v in index._id_to_idx.items():
+            index_bytes += sys.getsizeof(k) + sys.getsizeof(v)
+    
+    n_vectors = len(db) if len(db) > 0 else 1
+    
+    return {
+        'index_mb': index_bytes / (1024 ** 2),
+        'bytes_per_vector': index_bytes / n_vectors
+    }
+

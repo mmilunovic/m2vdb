@@ -1,0 +1,24 @@
+{
+  "index_name": "PyBruteForce-cosine",
+  "dataset_name": "fasttext",
+  "build_time_ms": 1655.9612920100335,
+  "search_latency": {
+    "p50": 183.2249585131649,
+    "p90": 214.32570840697736,
+    "p95": 238.4811693933443,
+    "p99": 295.6193227600306,
+    "mean": 191.26208702821168
+  },
+  "qps": 5.2284277325306885,
+  "recall": 1.0,
+  "index_mb": 1305.137783050537,
+  "bytes_per_vector": 1368.536156,
+  "n_vectors": 1000000,
+  "dimension": 300,
+  "k_searched": 10,
+  "_cache_info": {
+    "hash": "24316fa0ba7b09a6e9658c3762fa2b4352dec819232b0ecc1d3389f1b88a55d9",
+    "timestamp": "2025-11-21T16:34:42",
+    "code_hash": "4a727ba205d5185ccf2b7520acf996d0088935341bb86aa058f0e9627785b01d"
+  }
+}

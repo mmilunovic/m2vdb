@@ -48,11 +48,22 @@ def create_benchmark_configs(dimension: int, metric: str, skip_brute: bool = Fal
     # BruteForce (baseline)
     if not skip_brute:
         configs.append({
-            'name': f'BruteForce-{metric}',
+            'name': f'PyBruteForce-{metric}',
             'factory': lambda: VectorDatabase(
                 dimension=dimension,
                 metric=metric,
                 index_type='brute_force'
+            )
+        })
+    
+    # RustBruteForce (Rust implementation)
+    if not skip_brute:
+        configs.append({
+            'name': f'RustBruteForce-{metric}',
+            'factory': lambda: VectorDatabase(
+                dimension=dimension,
+                metric=metric,
+                index_type='rust_brute_force'
             )
         })
     
@@ -92,9 +103,10 @@ def main():
         help='Number of queries to run (default: 1000)'
     )
     parser.add_argument(
-        '--skip-brute',
-        action='store_true',
-        help='Skip BruteForce index (faster, use when you only want to test PQ)'
+        '--k',
+        type=int,
+        default=10,
+        help='Number of nearest neighbors to search for (default: 10)'
     )
     parser.add_argument(
         '--sift',
@@ -107,10 +119,20 @@ def main():
         help='Run only FastText benchmarks'
     )
     parser.add_argument(
-        '--k',
+        '--skip-brute',
+        action='store_true',
+        help='Skip BruteForce index (faster, use when you only want to test PQ)'
+    )
+    parser.add_argument(
+        '--seed',
         type=int,
-        default=10,
-        help='Number of nearest neighbors to search for (default: 10)'
+        default=42,
+        help='Random seed for reproducible query sampling (default: 42)'
+    )
+    parser.add_argument(
+        '--no-cache',
+        action='store_true',
+        help='Force re-run of benchmarks, ignoring cached results'
     )
     
     args = parser.parse_args()
@@ -120,18 +142,18 @@ def main():
     run_fasttext = args.fasttext or not args.sift
     
     console = Console()
-    runner = BenchmarkRunner(console=console)
+    runner = BenchmarkRunner(use_cache=not args.no_cache)
     
     console.print("[bold green]m2vdb Benchmark Suite[/bold green]")
     console.print(f"Queries: {args.n_queries:,}")
-    console.print(f"Search k: {args.k}\n")
+    console.print(f"Search k: {args.k}")
+    console.print(f"Random seed: {args.seed}\n")
     
     all_results = []
     
     # SIFT1M Benchmarks (128D, Euclidean)
     if run_sift:
-        console.print("[bold]Loading SIFT1M dataset...[/bold]")
-        sift = load_sift1m(download=True)
+        sift = load_sift1m()
         
         console.print("\n[bold cyan]=" * 10)
         console.print("[bold cyan]SIFT1M BENCHMARKS (128D, Euclidean)")
@@ -147,15 +169,14 @@ def main():
             configs=sift_configs,
             dataset=sift,
             k=args.k,
-            limit=None,  # Always use full corpus
-            n_queries=args.n_queries
+            n_queries=args.n_queries,
+            seed=args.seed
         )
         all_results.extend(sift_results)
     
     # FastText Benchmarks (300D, Cosine)
     if run_fasttext:
-        console.print("\n[bold]Loading FastText dataset...[/bold]")
-        fasttext = load_fasttext(download=True)
+        fasttext = load_fasttext()
         
         console.print("\n[bold cyan]=" * 10)
         console.print("[bold cyan]FASTTEXT BENCHMARKS (300D, Cosine)")
@@ -171,8 +192,8 @@ def main():
             configs=fasttext_configs,
             dataset=fasttext,
             k=args.k,
-            limit=None,  # Always use full corpus
-            n_queries=args.n_queries
+            n_queries=args.n_queries,
+            seed=args.seed
         )
         all_results.extend(fasttext_results)
     
