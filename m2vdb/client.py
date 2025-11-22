@@ -3,7 +3,6 @@ Python SDK for m2vdb vector database.
 """
 
 import httpx
-import json
 from typing import List, Dict, Any
 import numpy as np
 

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint with Ruff
+        run: uv run ruff check .
+
+      - name: Build Rust extension
+        # This compiles your Rust code and installs it into the uv environment
+        run: uv run maturin develop --release --manifest-path rust/Cargo.toml
+
+      - name: Smoke Test (Import Check)
+        # Since we don't have unit tests yet, we just check if it imports correctly
+        run: uv run python -c "import m2vdb; print('Successfully imported m2vdb!')"

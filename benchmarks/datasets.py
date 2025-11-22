@@ -11,7 +11,6 @@ import struct
 import tarfile
 import zipfile
 from pathlib import Path
-from typing import Tuple, Optional
 from dataclasses import dataclass
 from urllib.request import urlretrieve
 
@@ -58,7 +57,7 @@ def download_file(url: str, dest_path: Path, desc: str) -> None:
     # Use requests for HTTP/HTTPS, urllib for FTP
     if url.startswith('ftp://'):
         # For FTP, use urllib (no progress bar unfortunately)
-        print(f"  (FTP download, this may take a while...)")
+        print("  (FTP download, this may take a while...)")
         urlretrieve(url, dest_path)
         print(f"✓ Downloaded to {dest_path}")
     else:
@@ -313,7 +312,6 @@ def load_fasttext(corpus_size: int = 1_000_000) -> Dataset:
                 break
             
             parts = line.rstrip().split(' ')
-            word = parts[0]
             vec = np.array([float(x) for x in parts[1:]], dtype=np.float32)
             vectors.append(vec)
     

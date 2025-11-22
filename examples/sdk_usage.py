@@ -22,7 +22,7 @@ def main():
         dimension=3,
         metric="cosine"
     )
-    print(f"Created index: products")
+    print("Created index: products")
     
     # Upsert vectors
     print("\n2. Upserting vectors...")
