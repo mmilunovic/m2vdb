@@ -9,6 +9,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "faiss-cpu>=1.9.0",
     "fastapi>=0.121.0",
     "httpx>=0.28.1",
     "numpy>=2.3.4",
@@ -16,6 +17,7 @@ dependencies = [
     "psutil>=6.1.0",
     "requests>=2.32.3",
     "rich>=13.9.4",
+    "rust-indexes @ {root:uri}/rust",
     "scikit-learn>=1.7.2",
     "uvicorn>=0.38.0",
     "maturin>=1.10.1",
@@ -25,3 +27,6 @@ dependencies = [
 dev = [
     "ruff>=0.14.6",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
