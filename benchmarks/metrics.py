@@ -3,7 +3,6 @@ Metrics computation for benchmarking vector search algorithms.
 """
 
 import sys
-import time
 from typing import List, Dict
 import numpy as np
 import psutil

@@ -121,7 +121,7 @@ class BenchmarkRunner:
                 seed=seed
             )
             if cached_result:
-                self.console.print(f"  [green]✓ Found cached result[/green]")
+                self.console.print("  [green]✓ Found cached result[/green]")
                 self.console.print(f"  ✓ Built in {cached_result.build_time_ms:.1f}ms (cached)")
                 qps = cached_result.qps if cached_result.qps > 0 else 1.0
                 self.console.print(f"  ✓ Searched in {cached_result.n_vectors / qps:.2f}s ({cached_result.qps:.1f} QPS) (cached)")
