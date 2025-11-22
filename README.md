@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/m2vdb-logo.png" alt="m2vdb logo" width="200"/>
+  <img src="assets/m2vdb-logo-wide.png" alt="m2vdb logo" width="100%" style="max-width: 600px;"/>
   <h1>m2vdb</h1>
   
   [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -7,6 +7,7 @@
   [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
   [![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+  [![CI](https://github.com/mmilunovic/m2vdb/actions/workflows/ci.yml/badge.svg)](https://github.com/mmilunovic/m2vdb/actions/workflows/ci.yml)
 
   <p><strong>A "First Principles" Vector Database for Learning & Benchmarking</strong></p>
 </div>
@@ -14,14 +15,12 @@
 > This project is simply me trying to understand vector search and databases from first principles, while having fun building something end-to-end that *feels* like a real vector DB.
 > I’ve worked as an applied scientist on AI systems with retrieval and yet, I never really understood **how** vector databases actually work. Until now :)
 
----
-
 ## ✨ Features
 
 <table>
   <tr>
     <td valign="top" width="33%">
-      <h3>🧱 Index Implementations</h3>
+      <h4>🧱 Index Implementations</h4>
       <ul>
         <li>Brute Force (Python)</li>
         <li>Brute Force (Rust)</li>
@@ -30,14 +29,14 @@
       </ul>
     </td>
     <td valign="top" width="33%">
-      <h3>🌐 API</h3>
+      <h4>🌐 API</h4>
       <ul>
         <li>Minimal FastAPI server</li>
         <li>MCP server planned (for the memes)</li>
       </ul>
     </td>
     <td valign="top" width="33%">
-      <h3>📊 Benchmarking</h3>
+      <h4>📊 Benchmarking</h4>
       <ul>
         <li>Benchmarks on multiple datasets (SIFT1M, FastText, more coming)</li>
         <li>Latency, recall, build time, memory, QPS</li>
@@ -51,17 +50,16 @@
 ## 🗺️ Roadmap
 
 - [ ] **More Indexe**: Implement IVF and HNSW (Python first, Rust when I'm board).
-- [ ] **Comparative Benchmarks**: Add FAISS baselines to compare my implementations (e.g., `m2vdb PQ` vs `FAISS PQ`).
+- [ ] **Comparative Benchmarks**: Add FAISS baselines to compare my implementations.
 - [ ] **Experiments**: Hyperparameter sweeps for PQ (and others) with visualization/graphs.
 - [ ] **Configuration**: Better config management for running benchmark sweeps.
 - [ ] **MCP Server**: Model Context Protocol integration (because why not?).
 - [ ] **Rust Ports**: Porting more index types to Rust for speed.
 
----
 
 ## ⚡️ Quick Start
 
-### 1. Installation
+### Installation
 
 ```bash
 git clone https://github.com/mmilunovic/m2vdb.git
@@ -71,7 +69,7 @@ uv sync
 
 (Optional) Enable Rust-accelerated indexes: ```cd rust & maturin develop --release```
 
-### 2. Start the Server
+### Start the Server
 
 ```bash
 uv run uvicorn m2vdb.server:app --reload
@@ -79,7 +77,7 @@ uv run uvicorn m2vdb.server:app --reload
 
 > 💡 **Tip:** Once the server is running, visit **[http://localhost:8000/docs](http://localhost:8000/docs)** for the interactive API documentation (Swagger UI) to explore endpoints and test requests directly from your browser.
 
-### 3. Use the Client
+### Use the Client
 ```python
 from m2vdb import M2VDBClient
 
@@ -110,7 +108,6 @@ results = index.query(
 print(results) # Matches "A" (Red)
 ```
 
----
 
 ## 📊 Benchmarks
 
@@ -120,7 +117,7 @@ All results below were generated on a **MacBook Air M4**, 16GB RAM, with:
 * **1,000** queries
 * **k = 10**
 
-### SIFT1M (1,000,000 vectors, 128D)
+### SIFT1M (1M vectors, 128D)
 
 
 | Index                    | Build(ms) | Index(MB) | Bytes/Vec | p99(ms) | Recall@10 |
@@ -132,7 +129,7 @@ All results below were generated on a **MacBook Air M4**, 16GB RAM, with:
 
 ---
 
-### FASTTEXT (1,000,000 vectors, 300D)
+### FASTTEXT (1M vectors, 300D)
 
 
 | Index                    | Build(ms) | Index(MB) | Bytes/Vec | p99(ms) | Recall@10 |
