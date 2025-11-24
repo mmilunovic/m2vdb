@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/m2vdb-logo-full.png" alt="m2vdb logo" width="100%" style="max-width: 600px;"/>
+  <img src="assets/m2vdb-logo.png" alt="m2vdb logo" width="100%" style="max-width: 600px;"/>
   <!-- <h1>m2vdb</h1> -->
   
   [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
