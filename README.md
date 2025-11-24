@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="assets/m2vdb-logo-wide.png" alt="m2vdb logo" width="100%" style="max-width: 600px;"/>
-  <h1>m2vdb</h1>
+  <img src="assets/m2vdb-logo-full.png" alt="m2vdb logo" width="100%" style="max-width: 600px;"/>
+  <!-- <h1>m2vdb</h1> -->
   
   [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
   [![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org/)
@@ -9,7 +9,10 @@
   [![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
   [![CI](https://github.com/mmilunovic/m2vdb/actions/workflows/ci.yml/badge.svg)](https://github.com/mmilunovic/m2vdb/actions/workflows/ci.yml)
 
-  <p><strong>Understanding Vector Search Through Real Implementations</strong></p>
+  <!-- <p><strong></strong></p> -->
+  <h2 align="center">
+    M2VDB - Understanding Vector Search Through Real Implementations
+</h2>
 </div>
 
 > This project is simply me trying to understand vector search and databases from first principles, while having fun building something end-to-end that *feels* like a real vector DB.
@@ -32,7 +35,7 @@
       <h4>🌐 API</h4>
       <ul>
         <li>Minimal FastAPI server</li>
-        <li>MCP server planned (for the memes)</li>
+        <li><i>MCP server planned (for the memes)</i></li>
       </ul>
     </td>
     <td width="33%" valign="top">
