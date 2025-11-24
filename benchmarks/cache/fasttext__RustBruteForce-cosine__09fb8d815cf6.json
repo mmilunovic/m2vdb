@@ -1,0 +1,24 @@
+{
+  "index_name": "RustBruteForce-cosine",
+  "dataset_name": "fasttext",
+  "build_time_ms": 1085.7250419794582,
+  "search_latency": {
+    "p50": 116.33289551537018,
+    "p90": 117.99517089675646,
+    "p95": 120.87246190349106,
+    "p99": 153.84079767682124,
+    "mean": 117.69193399269716
+  },
+  "qps": 8.496759005269219,
+  "recall": 1.0,
+  "index_mb": 0.0,
+  "bytes_per_vector": 0.0,
+  "n_vectors": 1000000,
+  "dimension": 300,
+  "k_searched": 10,
+  "_cache_info": {
+    "hash": "09fb8d815cf62252a70a3aedebb5d689c457fec3be034185bad86ae053e18469",
+    "timestamp": "2025-11-21T16:36:41",
+    "code_hash": "d523fc711a334ed1d4e320bc48a48c342fe1df21a5e8a7f3ec6695ef8551ebd4"
+  }
+}

@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 
+=======
+>>>>>>> 9b6e9cdbb9c728ab37a7b8f627f5167943ec5828
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -186,3 +189,12 @@ benchmarks/data/
 # Node dependencies from archived demos or experiments
 node_modules/
 **/node_modules/
+
+# Project planning
+plan.md
+
+.DS_Store
+*.pyc
+
+
+__README.md

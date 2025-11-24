@@ -1,0 +1,24 @@
+{
+  "index_name": "PyBruteForce-euclidean",
+  "dataset_name": "sift1m",
+  "build_time_ms": 1121.5337499743327,
+  "search_latency": {
+    "p50": 127.41362450469751,
+    "p90": 135.19967089232523,
+    "p95": 145.20213930518366,
+    "p99": 172.80396133632163,
+    "mean": 129.75572297043982
+  },
+  "qps": 7.706789165883759,
+  "recall": 0.9997999999999999,
+  "index_mb": 649.0098533630371,
+  "bytes_per_vector": 680.536156,
+  "n_vectors": 1000000,
+  "dimension": 128,
+  "k_searched": 10,
+  "_cache_info": {
+    "hash": "3287969c4c2d3c89b6768fbc96260d731a4840cdbbad6c40cb598bdf68cd38bd",
+    "timestamp": "2025-11-21T16:24:14",
+    "code_hash": "4a727ba205d5185ccf2b7520acf996d0088935341bb86aa058f0e9627785b01d"
+  }
+}
