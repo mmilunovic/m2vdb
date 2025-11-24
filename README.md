@@ -9,7 +9,7 @@
   [![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
   [![CI](https://github.com/mmilunovic/m2vdb/actions/workflows/ci.yml/badge.svg)](https://github.com/mmilunovic/m2vdb/actions/workflows/ci.yml)
 
-  <p><strong>A "First Principles" Vector Database for Learning & Benchmarking</strong></p>
+  <p><strong>Understanding Vector Search Through Real Implementations</strong></p>
 </div>
 
 > This project is simply me trying to understand vector search and databases from first principles, while having fun building something end-to-end that *feels* like a real vector DB.
@@ -50,9 +50,10 @@
 ## 🗺️ Roadmap
 
 - [ ] **More Indexe**: Implement IVF and HNSW (Python first, Rust when I'm board).
-- [ ] **Comparative Benchmarks**: Add FAISS baselines to compare my implementations.
+- [x] **Comparative Benchmarks**: Add FAISS baselines to compare my implementations.
 - [ ] **Experiments**: Hyperparameter sweeps for PQ (and others) with visualization/graphs.
 - [ ] **Configuration**: Better config management for running benchmark sweeps.
+- [ ] **Memory Benchmarking**: Improve memory measurement to track non-Python indexes.
 - [ ] **MCP Server**: Model Context Protocol integration (because why not?).
 - [ ] **Rust Ports**: Porting more index types to Rust for speed.
 
@@ -124,7 +125,9 @@ All results below were generated on a **MacBook Air M4**, 16GB RAM, with:
 |--------------------------|-----------|-----------|-----------|---------|-----------|
 | PyBruteForce-euclidean   | 746       | 649.0     | 681       | 204.02  | 1.000     |
 | RustBruteForce-euclidean | 698       | N/A       | N/A       | 40.31   | 1.000     |
+| FAISS-Flat-euclidean     | 707       | N/A       | N/A       | 9.02    | 1.000     |
 | PQ(m=8,k=256)-euclidean  | 425167*   | 191.5     | 201       | 51.56   | 0.332     |
+| FAISS-PQ(m=8,k=256)-euclidean | 4906  | N/A       | N/A       | 2.17    | 0.323     |
 
 
 ---
@@ -136,7 +139,9 @@ All results below were generated on a **MacBook Air M4**, 16GB RAM, with:
 |--------------------------|-----------|-----------|-----------|---------|-----------|
 | PyBruteForce-cosine      | 707       | 1305.1    | 1369      | 310.86  | 1.000     |
 | RustBruteForce-cosine    | 1074      | N/A       | N/A       | 128.29  | 1.000     |
+| FAISS-Flat-cosine        | 1273      | N/A       | N/A       | 22.33   | 1.000     |
 | PQ(m=10,k=256)-cosine    | 559221*   | 199.5     | 209       | 56.49   | 0.283     |
+| FAISS-PQ(m=10,k=256)-cosine | 7208   | N/A       | N/A       | 3.44    | 0.253     |
 
 
 ---
