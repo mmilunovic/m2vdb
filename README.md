@@ -19,7 +19,7 @@
 
 <table>
   <tr>
-    <td valign="top">
+    <td width="33%" valign="top">
       <h4>🧱 Index Implementations</h4>
       <ul>
         <li>Brute Force (Python)</li>
@@ -28,14 +28,14 @@
         <li><i>More Rust ports coming...</i></li>
       </ul>
     </td>
-    <td valign="top">
+    <td width="33%" valign="top">
       <h4>🌐 API</h4>
       <ul>
         <li>Minimal FastAPI server</li>
         <li>MCP server planned (for the memes)</li>
       </ul>
     </td>
-    <td valign="top">
+    <td width="33%" valign="top">
       <h4>📊 Benchmarking</h4>
       <ul>
         <li>Benchmarks on multiple datasets (SIFT1M, FastText, more coming)</li>
