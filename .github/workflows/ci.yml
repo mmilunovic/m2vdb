@@ -1,4 +1,4 @@
-name: CI
+name: basic_build
 
 on:
   push:
@@ -27,9 +27,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Build Rust extension
-        # This compiles your Rust code and installs it into the uv environment
         run: uv run maturin develop --release --manifest-path rust/Cargo.toml
 
       - name: Smoke Test (Import Check)
-        # Since we don't have unit tests yet, we just check if it imports correctly
         run: uv run python -c "import m2vdb; print('Successfully imported m2vdb!')"

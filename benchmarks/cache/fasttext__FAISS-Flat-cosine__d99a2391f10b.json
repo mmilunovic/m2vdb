@@ -1,0 +1,24 @@
+{
+  "index_name": "FAISS-Flat-cosine",
+  "dataset_name": "fasttext",
+  "build_time_ms": 1273.1856669997796,
+  "search_latency": {
+    "p50": 18.79491649742704,
+    "p90": 19.96266221976839,
+    "p95": 20.48155144730117,
+    "p99": 22.325731584569432,
+    "mean": 19.049428077909397
+  },
+  "qps": 52.49501433377134,
+  "recall": 1.0,
+  "index_mb": 0.0,
+  "bytes_per_vector": 0.0,
+  "n_vectors": 1000000,
+  "dimension": 300,
+  "k_searched": 10,
+  "_cache_info": {
+    "hash": "d99a2391f10b34de0e01acbf744b207cce35183d3c7c6c8b85339f0156b69130",
+    "timestamp": "2025-11-24T10:32:29",
+    "code_hash": "1221d628181459566a4e8cb4551609f3bcb914f52bc733084955192019a34200"
+  }
+}

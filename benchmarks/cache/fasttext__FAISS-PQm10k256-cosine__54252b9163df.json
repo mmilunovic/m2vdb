@@ -1,0 +1,24 @@
+{
+  "index_name": "FAISS-PQ(m=10,k=256)-cosine",
+  "dataset_name": "fasttext",
+  "build_time_ms": 7208.251000003656,
+  "search_latency": {
+    "p50": 3.2542705012019724,
+    "p90": 3.3073414117097855,
+    "p95": 3.336635102459695,
+    "p99": 3.444887414225377,
+    "mean": 3.1314450336794835
+  },
+  "qps": 319.3413868820136,
+  "recall": 0.25259999999999905,
+  "index_mb": 0.0,
+  "bytes_per_vector": 0.0,
+  "n_vectors": 1000000,
+  "dimension": 300,
+  "k_searched": 10,
+  "_cache_info": {
+    "hash": "54252b9163df61bbab827f0a456cd3c2568589a857ed9d5baba036304b4ba64e",
+    "timestamp": "2025-11-24T10:32:39",
+    "code_hash": "28027c3443ecde09248205dbbae747e4b9593d5400e44e01212536e9feb158f9"
+  }
+}
