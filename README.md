@@ -28,6 +28,7 @@
         <li>Brute Force (Python)</li>
         <li>Brute Force (Rust)</li>
         <li>Product Quantization (PQ)</li>
+        <li>Inverted File (IVF)</li>
         <li><i>More Rust ports coming...</i></li>
       </ul>
     </td>
@@ -52,7 +53,7 @@
 
 ## 🗺️ Roadmap
 
-- [ ] **More Indexe**: Implement IVF and HNSW (Python first, Rust when I'm board).
+- [ ] **More Indexe**: Implement HNSW (Python first, Rust when I'm board).
 - [x] **Comparative Benchmarks**: Add FAISS baselines to compare my implementations.
 - [ ] **Experiments**: Hyperparameter sweeps for PQ (and others) with visualization/graphs.
 - [ ] **Configuration**: Better config management for running benchmark sweeps.
@@ -93,7 +94,7 @@ index = client.create_index(
     name="demo", 
     dimension=3, 
     metric="cosine",
-    index_type="brute_force" # Options: "brute_force", "rust_brute_force", "pq"
+    index_type="brute_force" # Options: "brute_force", "rust_brute_force", "pq", "ivf"
 )
 
 # 3. Insert Data
@@ -124,13 +125,14 @@ All results below were generated on a **MacBook Air M4**, 16GB RAM, with:
 ### SIFT1M (1M vectors, 128D)
 
 
-| Index                    | Build(ms) | Index(MB) | Bytes/Vec | p99(ms) | Recall@10 |
-|--------------------------|-----------|-----------|-----------|---------|-----------|
-| PyBruteForce-euclidean   | 746       | 649.0     | 681       | 204.02  | 1.000     |
-| RustBruteForce-euclidean | 698       | N/A       | N/A       | 40.31   | 1.000     |
-| FAISS-Flat-euclidean     | 707       | N/A       | N/A       | 9.02    | 1.000     |
-| PQ(m=8,k=256)-euclidean  | 425167*   | 191.5     | 201       | 51.56   | 0.332     |
-| FAISS-PQ(m=8,k=256)-euclidean | 4906  | N/A       | N/A       | 2.17    | 0.323     |
+| Index                    | Build(ms) | Index(MB) | Bytes/Vec | QPS | p99(ms) | Recall@10 |
+|--------------------------|-----------|-----------|-----------|-----|---------|-----------|
+| PyBruteForce-euclidean   | 746       | 649.0     | 681       | 5   | 204.02  | 1.000     |
+| RustBruteForce-euclidean | 698       | N/A       | N/A       | 25  | 40.31   | 1.000     |
+| IVF(auto)-euclidean      | 5,453     | 657.7     | 690       | 25  | 56.67   | 0.995     |
+| FAISS-Flat-euclidean     | 707       | N/A       | N/A       | 111 | 9.02    | 1.000     |
+| PQ(m=8,k=256)-euclidean  | 425,167*  | 191.5     | 201       | 19  | 51.56   | 0.332     |
+| FAISS-PQ(m=8,k=256)-euclidean | 4,906  | N/A       | N/A       | 461 | 2.17    | 0.323     |
 
 
 ---
@@ -138,13 +140,14 @@ All results below were generated on a **MacBook Air M4**, 16GB RAM, with:
 ### FASTTEXT (sampled 1M vectors, 300D)
 
 
-| Index                    | Build(ms) | Index(MB) | Bytes/Vec | p99(ms) | Recall@10 |
-|--------------------------|-----------|-----------|-----------|---------|-----------|
-| PyBruteForce-cosine      | 707       | 1305.1    | 1369      | 310.86  | 1.000     |
-| RustBruteForce-cosine    | 1074      | N/A       | N/A       | 128.29  | 1.000     |
-| FAISS-Flat-cosine        | 1273      | N/A       | N/A       | 22.33   | 1.000     |
-| PQ(m=10,k=256)-cosine    | 559221*   | 199.5     | 209       | 56.49   | 0.283     |
-| FAISS-PQ(m=10,k=256)-cosine | 7208   | N/A       | N/A       | 3.44    | 0.253     |
+| Index                    | Build(ms) | Index(MB) | Bytes/Vec | QPS | p99(ms) | Recall@10 |
+|--------------------------|-----------|-----------|-----------|-----|---------|-----------|
+| PyBruteForce-cosine      | 707       | 1305.1    | 1369      | 3   | 310.86  | 1.000     |
+| RustBruteForce-cosine    | 1,074     | N/A       | N/A       | 8   | 128.29  | 1.000     |
+| IVF(auto)-cosine         | 14,812    | 1310.0    | 1374      | 21  | 59.95   | 0.951     |
+| FAISS-Flat-cosine        | 1,273     | N/A       | N/A       | 45  | 22.33   | 1.000     |
+| PQ(m=10,k=256)-cosine    | 559,221*  | 199.5     | 209       | 18  | 56.49   | 0.283     |
+| FAISS-PQ(m=10,k=256)-cosine | 7,208  | N/A       | N/A       | 291 | 3.44    | 0.253     |
 
 
 ---

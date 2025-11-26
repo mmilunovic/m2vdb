@@ -161,6 +161,31 @@ def measure_index_memory(db: VectorDatabase) -> Dict[str, float]:
     if hasattr(index, 'quantized_codes') and index.quantized_codes is not None:
         index_bytes += index.quantized_codes.nbytes
     
+    # IVF: stores centroids, inverted lists, and cached norms
+    if hasattr(index, 'centroids') and index.centroids is not None:
+        index_bytes += index.centroids.nbytes
+    
+    if hasattr(index, 'centroid_norms_sq') and index.centroid_norms_sq is not None:
+        index_bytes += index.centroid_norms_sq.nbytes
+    
+    if hasattr(index, 'inverted_lists') and index.inverted_lists:
+        for cluster_id, inv_list in index.inverted_lists.items():
+            # Vectors in each cluster
+            if 'vectors' in inv_list:
+                index_bytes += inv_list['vectors'].nbytes
+            # IDs in each cluster
+            if 'ids' in inv_list:
+                index_bytes += inv_list['ids'].nbytes * 8  # Approximate object array
+            # Cached norms for euclidean
+            if 'norms_sq' in inv_list:
+                index_bytes += inv_list['norms_sq'].nbytes
+    
+    # IVF: ID to cluster mapping
+    if hasattr(index, '_id_to_cluster') and index._id_to_cluster:
+        index_bytes += sys.getsizeof(index._id_to_cluster)
+        for k, v in index._id_to_cluster.items():
+            index_bytes += sys.getsizeof(k) + sys.getsizeof(v)
+    
     # RustBruteForce or other indexes might have vector_norms
     if hasattr(index, 'vector_norms') and index.vector_norms is not None:
         if hasattr(index.vector_norms, 'nbytes'):
