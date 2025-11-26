@@ -5,7 +5,7 @@ High-level vector database API.
 from typing import List, Optional, Dict, Any
 import numpy as np
 
-from .indexes import Index, BruteForceIndex, PQIndex, RustBruteForceIndex
+from .indexes import Index, BruteForceIndex, PQIndex, RustBruteForceIndex, IVFIndex
 from .models import SearchResult
 
 
@@ -55,6 +55,8 @@ class VectorDatabase:
             return RustBruteForceIndex(metric=metric)
         elif index_type == 'pq':
             return PQIndex(metric=metric, **index_params)
+        elif index_type == 'ivf':
+            return IVFIndex(metric=metric, **index_params)
         elif index_type == 'hnsw':
             raise NotImplementedError("HNSW not yet implemented")
         else:

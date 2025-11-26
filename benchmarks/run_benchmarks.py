@@ -88,6 +88,19 @@ def create_benchmark_configs(dimension: int, metric: str, compare_faiss: bool = 
         )
     })
     
+    # IVF: use default smart parameters (auto-determined during build)
+    # n_clusters will be set to sqrt(n_vectors) ≈ 1000 for 1M vectors
+    # nprobe will be set to sqrt(n_clusters) ≈ 31 for balanced recall/speed
+    configs.append({
+        'name': f'IVF(auto)-{metric}',
+        'factory': lambda: VectorDatabase(
+            dimension=dimension,
+            metric=metric,
+            index_type='ivf',
+            index_params={'n_clusters': 20, 'nprobe': 5}  # Use all defaults
+        )
+    })
+    
     if compare_faiss:
         configs.append({
             'name': f'FAISS-Flat-{metric}',

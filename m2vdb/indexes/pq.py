@@ -1,7 +1,3 @@
-
-
-
-
 from typing import List, Optional, Dict
 import numpy as np
 from sklearn.cluster import KMeans

@@ -1,10 +1,8 @@
-# indexes/rust_brute_force.py
-
 from typing import List, Tuple
 import numpy as np
 
 from .base import Index
-import rust_indexes  # this is the Rust extension module
+import rust_indexes
 
 
 class RustBruteForceIndex(Index):
