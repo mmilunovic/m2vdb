@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+ENV/
+
+# Rust
+rust/target/
+!rust/target/release/*.so
+rust/Cargo.lock
+
+# Benchmarks
+benchmarks/data/
+benchmarks/cache/
+benchmarks/__pycache__/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Data and logs
+*.log
+*.db
+*.sqlite
+data/
+logs/
+
+# Jupyter
+*.ipynb
+.ipynb_checkpoints/
+
+# Environment
+.env
+.env.*
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+benchmarks/
+examples/
+assets/
+.ruff_cache/
+.venv/

@@ -5,9 +5,34 @@ build-backend = "hatchling.build"
 [project]
 name = "m2vdb"
 version = "0.1.0"
-description = "Add your description here"
+description = "A fast, lightweight vector database with multiple index types (Brute Force, PQ, IVF) and Pinecone-style API"
 readme = "README.md"
 requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Milos Milunovic", email = "milunovicmilos@gmail.com"}
+]
+keywords = [
+    "vector-database",
+    "vector-search",
+    "embeddings",
+    "similarity-search",
+    "machine-learning",
+    "nearest-neighbors",
+    "product-quantization"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "faiss-cpu>=1.9.0",
     "fastapi>=0.121.0",
@@ -22,6 +47,15 @@ dependencies = [
     "uvicorn>=0.38.0",
     "maturin>=1.10.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mmilunovic/m2vdb"
+Repository = "https://github.com/mmilunovic/m2vdb"
+Issues = "https://github.com/mmilunovic/m2vdb/issues"
+Documentation = "https://github.com/mmilunovic/m2vdb#readme"
+
+[project.scripts]
+m2vdb-server = "m2vdb.cli:main"
 
 [dependency-groups]
 dev = [
