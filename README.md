@@ -36,6 +36,7 @@
       <h4>🌐 API</h4>
       <ul>
         <li>Minimal FastAPI server</li>
+        <li>Resource stats</li>
         <li><i>MCP server planned (for the memes)</i></li>
       </ul>
     </td>
@@ -66,18 +67,42 @@
 
 ### Installation
 
+#### Option 1: From PyPI (Recommended)
+```bash
+pip install m2vdb
+# or with uv
+uv pip install m2vdb
+```
+
+#### Option 2: From Source
 ```bash
 git clone https://github.com/mmilunovic/m2vdb.git
 cd m2vdb
 uv sync
 ```
 
-(Optional) Enable Rust-accelerated indexes: ```cd rust & maturin develop --release```
+(Optional) Enable Rust-accelerated indexes: ```cd rust && maturin develop --release```
 
 ### Start the Server
 
+#### Using Docker
 ```bash
-uv run uvicorn m2vdb.server:app --reload
+docker-compose up -d
+```
+
+#### Using CLI Command
+```bash
+# Basic usage
+m2vdb-server
+
+# Custom port
+m2vdb-server --port 8080
+
+# With persistent storage (when implemented)
+m2vdb-server --data-dir /path/to/data
+
+# Development mode with auto-reload
+m2vdb-server --reload
 ```
 
 > 💡 **Tip:** Once the server is running, visit **[http://localhost:8000/docs](http://localhost:8000/docs)** for the interactive API documentation (Swagger UI) to explore endpoints and test requests directly from your browser.

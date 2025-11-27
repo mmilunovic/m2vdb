@@ -179,3 +179,68 @@ class VectorDatabase:
         # TODO: Implement threshold-based rebuilding
         # For now, always rebuild (eager strategy)
         return True
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get comprehensive statistics about this database instance.
+        
+        Returns a dictionary with:
+        - num_vectors: total number of vectors
+        - dimension: vector dimensionality
+        - metric: distance metric used
+        - index_type: type of search index
+        - memory: breakdown of memory usage in bytes
+            - vectors_bytes: raw vector storage
+            - index_bytes: index data structures (PQ codebooks, IVF clusters, etc.)
+            - metadata_bytes: stored metadata
+            - total_bytes: sum of all above
+        """
+        import sys
+        
+        # TODO: This implementation only works when everything is in-memory!
+        # When we implement persistence (disk-backed storage), we need to rewrite this.
+        # We CANNOT load all vectors into RAM just to calculate stats - that defeats the purpose.
+        # 
+        # Future implementation should:
+        # 1. Track memory usage incrementally as vectors are added/removed
+        # 2. Store metadata sizes separately (or use os.path.getsize() on disk files)
+        # 3. Use psutil or similar to get actual process memory usage
+        # 4. For disk-backed vectors: track file sizes, not in-memory numpy array sizes
+        # 5. Consider maintaining a running stats dict that updates on upsert/delete
+        #    instead of recalculating from scratch every time
+        
+        # Calculate vectors memory (raw numpy arrays)
+        vectors_bytes = sum(v.nbytes for v in self._vectors.values())
+        
+        # Calculate index memory (index-specific data structures)
+        # For brute force: stores vectors internally
+        # For PQ: codebooks + quantized codes
+        # For IVF: cluster centroids + inverted lists
+        index_bytes = 0
+        if hasattr(self.index, 'memory_usage'):
+            index_bytes = self.index.memory_usage()
+        
+        # Calculate metadata memory (Python dicts/objects)
+        metadata_bytes = sum(
+            sys.getsizeof(m) for m in self._metadata.values() if m
+        )
+        
+        total_bytes = vectors_bytes + index_bytes + metadata_bytes
+        
+        return {
+            "num_vectors": len(self),
+            "dimension": self.dimension,
+            "metric": self.metric,
+            "index_type": self.index_type,
+            "memory": {
+                "vectors_bytes": vectors_bytes,
+                "index_bytes": index_bytes,
+                "metadata_bytes": metadata_bytes,
+                "total_bytes": total_bytes,
+                # Convenience MB conversions
+                "vectors_mb": round(vectors_bytes / 1024 / 1024, 2),
+                "index_mb": round(index_bytes / 1024 / 1024, 2),
+                "metadata_mb": round(metadata_bytes / 1024 / 1024, 2),
+                "total_mb": round(total_bytes / 1024 / 1024, 2),
+            }
+        }
