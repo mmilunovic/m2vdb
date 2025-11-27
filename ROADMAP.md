@@ -2,8 +2,33 @@
 
 ## High Priority
 
+### Persistence & Bulk Ingestion (Near-Term Plan)
+**Status**: Not Implemented
+**Priority**: High
+
+See `docs/persistence_ingestion_plan.md` for details.
+
+#### Goals
+- Add minimal disk-backed storage for vectors/metadata/index artifacts so data survives restarts.
+- Provide efficient bulk ingestion without retraining after every insert.
+- Keep the API small: explicit build flow with optional deferral.
+
+#### MVP Tasks
+- Add persistence toggles (`persist`, `data_dir`, `flush_threshold`) to `VectorDatabase` and the server.
+- Implement a staged write path (buffer → flush → serialize artifacts on successful `build()`).
+- Add startup load/warmup path using manifests and persisted artifacts.
+- Introduce `batch_upsert(..., rebuild=True | False | "defer")` across database, API, and client.
+- Extend `/health` to report persistence status (data dir reachable, manifest valid).
+
+#### Nice-to-haves (after MVP)
+- Threshold-based background rebuilds for ingestion bursts.
+- Bulk mode context manager to defer rebuilds until exit.
+- WAL/snapshots/compaction for better durability and cleanup.
+
+---
+
 ### Memory Benchmarking Improvements
-**Status**: Not Implemented  
+**Status**: Not Implemented
 **Priority**: Medium
 
 #### Problem
@@ -18,70 +43,6 @@ Implement cross-language memory tracking:
 - Measure before/after index build to capture total memory delta
 - Track both Python heap and system-level allocations
 - Properly attribute memory to Rust and FAISS indexes
-
----
-
-### Batch Operations & Training Flow
-**Status**: Not Implemented  
-**Priority**: High
-
-#### Problem
-Currently, bulk loading vectors through the API is inefficient:
-- `upsert()` rebuilds the index after every single insert
-- For PQ with 1M vectors: would retrain k-means 1 million times
-- Benchmarks work around this by directly accessing `_vectors` dict (internal hack)
-- Users have no way to efficiently bulk load data
-
-#### Solution: Implement Batch Upsert
-Add `batch_upsert()` method to:
-- **VectorDatabase** (`m2vdb/database.py`)
-  - Accept batch of vectors, IDs, and metadata
-  - Store all in `_vectors` dict at once
-  - Call `_rebuild_index()` once (trains PQ k-means once)
-  
-- **FastAPI Server** (`m2vdb/server.py`)
-  - Add `POST /indexes/{name}/vectors/batch` endpoint
-  - Accept list of vectors in single request
-  
-- **Client SDK** (`m2vdb/client.py`)
-  - Add `batch_upsert()` method for bulk operations
-
-#### Solution: Elegant Training Flow for Trainable Indexes
-Design a better API for indexes that require training (PQ, IVF, HNSW):
-
-**Option 1: Explicit train/build separation**
-```python
-# User explicitly stages vectors then trains
-db = VectorDatabase(index_type='pq', dimension=128)
-db.stage_vectors(ids, vectors)  # Store without building
-db.stage_vectors(more_ids, more_vectors)  # Add more
-db.train()  # Now train k-means on all staged vectors
-```
-
-**Option 2: Auto-batching with threshold**
-```python
-# Automatically batch and train after N vectors
-db = VectorDatabase(
-    index_type='pq',
-    dimension=128,
-    rebuild_strategy='threshold',
-    rebuild_threshold=10000  # Train after every 10k vectors
-)
-db.upsert(...)  # Accumulates
-db.upsert(...)  # Still accumulating
-# Automatically trains after 10k upserts
-```
-
-**Option 3: Context manager for bulk operations**
-```python
-# Training deferred until context exit
-with db.bulk_mode():
-    for id, vec in data:
-        db.upsert(id, vec)
-# Trains once here
-```
-
-**Decision needed**: Choose which pattern fits best with the rest of the API design.
 
 ---
 
