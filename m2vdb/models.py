@@ -17,7 +17,7 @@ class CreateIndexRequest(BaseModel):
     """Create a new index."""
     dimension: int = Field(gt=0, le=10000, description="Vector dimensionality")
     metric: Literal["cosine", "euclidean"] = Field(default="cosine", description="Distance metric")
-    index_type: Literal["brute_force", "pq", "rust_brute_force"] = Field(default="brute_force", description="Index implementation")
+    index_type: Literal["brute_force", "pq", "rust_brute_force", "ivf"] = Field(default="brute_force", description="Index implementation")
 
 
 class IndexInfo(BaseModel):
