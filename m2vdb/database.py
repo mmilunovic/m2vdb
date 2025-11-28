@@ -5,8 +5,12 @@ High-level vector database API.
 from typing import List, Optional, Dict, Any
 import numpy as np
 
-from .indexes import Index, BruteForceIndex, PQIndex, RustBruteForceIndex, IVFIndex
+from .indexes import Index, BruteForceIndex, PQIndex, IVFIndex, HAS_RUST
 from .models import SearchResult
+
+# Conditionally import Rust index if available
+if HAS_RUST:
+    from .indexes import RustBruteForceIndex
 
 
 class VectorDatabase:
@@ -52,6 +56,13 @@ class VectorDatabase:
         if index_type == 'brute_force':
             return BruteForceIndex(metric=metric)
         elif index_type == 'rust_brute_force':
+            if not HAS_RUST:
+                raise ValueError(
+                    "Rust indexes not available. To enable Rust indexes:\n"
+                    "  1. Install Rust: https://rustup.rs/\n"
+                    "  2. Build extensions: cd rust && maturin develop --release\n"
+                    "  3. Or use 'brute_force' index type instead"
+                )
             return RustBruteForceIndex(metric=metric)
         elif index_type == 'pq':
             return PQIndex(metric=metric, **index_params)
