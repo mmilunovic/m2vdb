@@ -22,7 +22,7 @@ __all__ = [
 
 # Optional Rust index
 try:
-    from .indexes import RustBruteForceIndex, HAS_RUST
+    from .indexes import RustBruteForceIndex, HAS_RUST  # noqa: F401
     __all__.extend(["RustBruteForceIndex", "HAS_RUST"])
 except ImportError:
     HAS_RUST = False

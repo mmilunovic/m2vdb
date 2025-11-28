@@ -215,7 +215,7 @@ class IVFIndex(Index):
             vectors = self._normalize_vectors(vectors)
         
         # Learn cluster centroids using k-means
-        print(f"  IVF: Running k-means clustering (this may take a minute)...")
+        print("  IVF: Running k-means clustering (this may take a minute)...")
         kmeans = KMeans(
             n_clusters=self.n_clusters,
             max_iter=self.kmeans_max_iter,
