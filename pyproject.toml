@@ -1,32 +1,76 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "m2vdb"
 version = "0.1.0"
-description = "Add your description here"
+description = "Educational vector database built from first principles to understand how vector search really works."
 readme = "README.md"
 requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Milos Milunovic", email = "milunovicmilos@gmail.com"}
+]
+keywords = [
+    "vector-database",
+    "vector-search",
+    "embeddings",
+    "similarity-search",
+    "machine-learning",
+    "nearest-neighbors",
+    "product-quantization"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
-    "faiss-cpu>=1.9.0",
     "fastapi>=0.121.0",
     "httpx>=0.28.1",
     "numpy>=2.3.4",
     "pydantic>=2.12.3",
-    "psutil>=6.1.0",
     "requests>=2.32.3",
-    "rich>=13.9.4",
-    "rust-indexes @ {root:uri}/rust",
     "scikit-learn>=1.7.2",
     "uvicorn>=0.38.0",
-    "maturin>=1.10.1",
 ]
+
+[project.optional-dependencies]
+# Optional benchmarking dependencies
+benchmark = [
+    "faiss-cpu>=1.9.0",
+    "rich>=13.9.4",
+    "psutil>=6.1.0",
+]
+
+# All optional extras
+all = ["m2vdb[benchmark]"]
+
+[project.urls]
+Homepage = "https://github.com/mmilunovic/m2vdb"
+Repository = "https://github.com/mmilunovic/m2vdb"
+Issues = "https://github.com/mmilunovic/m2vdb/issues"
+Documentation = "https://github.com/mmilunovic/m2vdb#readme"
+
+[project.scripts]
+m2vdb-server = "m2vdb.cli:main"
 
 [dependency-groups]
 dev = [
     "ruff>=0.14.6",
+    "maturin>=1.10.1",
 ]
 
-[tool.hatch.metadata]
-allow-direct-references = true
+[tool.setuptools.packages.find]
+include = ["m2vdb*"]
+exclude = ["rust*", "benchmarks*", "assets*"]
+
+[tool.setuptools]
+license-files = []

@@ -1,0 +1,24 @@
+{
+  "index_name": "IVF(auto)-cosine",
+  "dataset_name": "fasttext",
+  "build_time_ms": 14811.770875006914,
+  "search_latency": {
+    "p50": 46.941687498474494,
+    "p90": 54.2988832865376,
+    "p95": 56.35138990037376,
+    "p99": 59.94996416528011,
+    "mean": 46.95438625299721
+  },
+  "qps": 21.297264852145045,
+  "recall": 0.9510999999999974,
+  "index_mb": 1310.0349521636963,
+  "bytes_per_vector": 1373.67121,
+  "n_vectors": 1000000,
+  "dimension": 300,
+  "k_searched": 10,
+  "_cache_info": {
+    "hash": "ed47c60fe29a87cd0b405bfb06534803e23bd1a1ab8df78aa4e1eea4447fd765",
+    "timestamp": "2025-11-26T16:49:43",
+    "code_hash": "d93d1c8ff23b16af4b26e6789f6076a43e1c8ec97d1ca262d1678213aa9ef2af"
+  }
+}

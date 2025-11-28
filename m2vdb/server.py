@@ -38,6 +38,9 @@ indexes: dict[str, dict[str, VectorDatabase]] = {
     "user2": {}
 }
 
+# Server startup time for uptime calculation
+SERVER_START_TIME = time.time()
+
 
 def get_current_user(auth: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """Validate API key and return user ID."""
@@ -260,9 +263,59 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Health check."""
-    total_indexes = sum(len(user_indexes) for user_indexes in indexes.values())
-    return {"status": "healthy", "total_indexes": total_indexes}
+    """Simple health check - just confirms the service is alive"""
+    return {"status": "healthy"}
+
+
+@app.get("/stats")
+async def stats(user_id: str = Depends(get_current_user)):
+    """Detailed resource usage for the authenticated user"""
+    # Aggregate stats across all user's indexes
+    total_vectors = 0
+    total_vectors_bytes = 0
+    total_index_bytes = 0
+    total_metadata_bytes = 0
+    index_details = []
+    
+    for name, db in indexes[user_id].items():
+        # Get stats from database instance
+        db_stats = db.get_stats()
+        
+        total_vectors += db_stats["num_vectors"]
+        total_vectors_bytes += db_stats["memory"]["vectors_bytes"]
+        total_index_bytes += db_stats["memory"]["index_bytes"]
+        total_metadata_bytes += db_stats["memory"]["metadata_bytes"]
+        
+        index_details.append({
+            "name": name,
+            "type": db_stats["index_type"],
+            "dimension": db_stats["dimension"],
+            "metric": db_stats["metric"],
+            "num_vectors": db_stats["num_vectors"],
+            "memory": {
+                "vectors_mb": db_stats["memory"]["vectors_mb"],
+                "index_mb": db_stats["memory"]["index_mb"],
+                "metadata_mb": db_stats["memory"]["metadata_mb"],
+                "total_mb": db_stats["memory"]["total_mb"]
+            }
+        })
+    
+    return {
+        "user": user_id,
+        "indexes": {
+            "total": len(indexes[user_id]),
+            "details": index_details
+        },
+        "vectors": {
+            "total": total_vectors
+        },
+        "memory": {
+            "vectors_mb": round(total_vectors_bytes / 1024 / 1024, 2),
+            "indexes_mb": round(total_index_bytes / 1024 / 1024, 2),
+            "metadata_mb": round(total_metadata_bytes / 1024 / 1024, 2),
+            "total_mb": round((total_vectors_bytes + total_index_bytes + total_metadata_bytes) / 1024 / 1024, 2)
+        }
+    }
 
 
 if __name__ == "__main__":
