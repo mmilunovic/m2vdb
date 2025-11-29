@@ -190,3 +190,27 @@ class BruteForceIndex(Index):
         """Return the number of vectors in the index."""
         return len(self.ids)
     
+    def save_artifacts(self, artifacts_dir: str) -> None:
+        """
+        Save trained artifacts to disk.
+        
+        Brute force has no trainable components (no codebooks, centroids, etc.),
+        so this method does nothing. Implemented for consistency with the Index interface.
+        
+        Args:
+            artifacts_dir: Directory to save artifacts to (unused)
+        """
+        pass
+    
+    def load_artifacts(self, artifacts_dir: str) -> None:
+        """
+        Load trained artifacts from disk.
+        
+        Brute force has no trainable components (no codebooks, centroids, etc.),
+        so this method does nothing. Implemented for consistency with the Index interface.
+        
+        Args:
+            artifacts_dir: Directory to load artifacts from (unused)
+        """
+        pass
+    

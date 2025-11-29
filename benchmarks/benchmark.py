@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import track
 
-from m2vdb import VectorDatabase
+from m2vdb import Collection
 from .datasets import Dataset
 # from benchmarks.cache import BenchmarkCache
 from benchmarks.metrics import (
@@ -66,7 +66,7 @@ class BenchmarkRunner:
         runner = BenchmarkRunner()
         results = runner.benchmark_index(
             index_name="BruteForce",
-            index_factory=lambda: VectorDatabase(...),
+            index_factory=lambda: Collection(...),
             dataset=sift_dataset,
             k=10
         )
@@ -85,7 +85,7 @@ class BenchmarkRunner:
     def benchmark_index(
         self,
         index_name: str,
-        index_factory: Callable[[], VectorDatabase],
+        index_factory: Callable[[], Collection],
         dataset: Dataset,
         k: int = 10,
         n_queries: Optional[int] = None,
@@ -96,7 +96,7 @@ class BenchmarkRunner:
         
         Args:
             index_name: Human-readable name for this configuration
-            index_factory: Function that creates a VectorDatabase instance
+            index_factory: Function that creates a Collection instance
             dataset: Dataset to benchmark on
             k: Number of neighbors to search for
             n_queries: Number of queries to run (None = all queries in dataset)

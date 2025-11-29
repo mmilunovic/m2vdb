@@ -1,5 +1,5 @@
 """
-High-level vector database API.
+High-level vector collection API.
 """
 
 from typing import List, Optional, Dict, Any
@@ -13,11 +13,11 @@ if HAS_RUST:
     from .indexes import RustBruteForceIndex
 
 
-class VectorDatabase:
+class Collection:
     """
-    Vector database with metadata support and pluggable index backends.
+    Vector collection with metadata support and pluggable index backends.
     
-    Separates concerns: VectorDatabase manages IDs/metadata/API,
+    Separates concerns: Collection manages IDs/metadata/API,
     Index handles vector storage and search.
     """
     
@@ -79,7 +79,7 @@ class VectorDatabase:
         vector: np.ndarray, 
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
-        """Insert or update a vector in the database."""
+        """Insert or update a vector in the collection."""
         assert vector.shape == (self.dimension,), \
             f"Vector dimension {vector.shape} doesn't match {self.dimension}"
         
@@ -165,12 +165,12 @@ class VectorDatabase:
         return self._vectors[id], self._metadata.get(id)
     
     def __len__(self) -> int:
-        """Number of vectors in the database."""
+        """Number of vectors in the collection."""
         return self.index.size()
     
     def __repr__(self) -> str:
         return (
-            f"VectorDatabase(dimension={self.dimension}, "
+            f"Collection(dimension={self.dimension}, "
             f"metric={self.metric}, "
             f"index_type={self.index_type}, "
             f"size={len(self)})"
@@ -193,7 +193,7 @@ class VectorDatabase:
     
     def get_stats(self) -> Dict[str, Any]:
         """
-        Get comprehensive statistics about this database instance.
+        Get comprehensive statistics about this collection instance.
         
         Returns a dictionary with:
         - num_vectors: total number of vectors

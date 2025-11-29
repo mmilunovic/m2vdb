@@ -13,7 +13,7 @@ import numpy as np
 from contextlib import asynccontextmanager
 import time
 
-from .database import VectorDatabase
+from .collection import Collection
 from .models import (
     CreateIndexRequest,
     IndexInfo,
@@ -33,7 +33,7 @@ API_KEYS = {
     "sk-test-user2": "user2"
 }
 
-indexes: dict[str, dict[str, VectorDatabase]] = {
+indexes: dict[str, dict[str, Collection]] = {
     "user1": {},
     "user2": {}
 }
@@ -96,7 +96,7 @@ async def create_index(
         )
     
     try:
-        db = VectorDatabase(
+        db = Collection(
             dimension=request.dimension,
             metric=request.metric,
             index_type=request.index_type
@@ -157,7 +157,7 @@ async def delete_index(name: str, user_id: str = Depends(get_current_user)):
     return {"message": f"Index '{name}' deleted"}
 
 
-def _get_index(name: str, user_id: str) -> VectorDatabase:
+def _get_index(name: str, user_id: str) -> Collection:
     """Helper to get index or raise 404."""
     if name not in indexes[user_id]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Index '{name}' not found")

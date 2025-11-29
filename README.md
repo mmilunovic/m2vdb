@@ -155,13 +155,13 @@ print(results) # Matches "A" (Red)
 If you've built the Rust extensions, you can use them for significantly better performance:
 
 ```python
-from m2vdb import VectorDatabase, HAS_RUST
+from m2vdb import Collection, HAS_RUST
 
 # Check if Rust is available
 print(f"Rust indexes available: {HAS_RUST}")
 
 # Use Rust brute force index (5-10x faster than Python)
-db = VectorDatabase(
+db = Collection(
     dimension=128,
     metric="euclidean",
     index_type="rust_brute_force"  # Requires Rust extensions

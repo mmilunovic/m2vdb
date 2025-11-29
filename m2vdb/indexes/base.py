@@ -7,7 +7,7 @@ class Index(ABC):
     Abstract base class for vector index implementations.
     
     All indexes must track whether they have been built via the is_built property.
-    This allows VectorDatabase to decide when to call build() vs add().
+    This allows Collection to decide when to call build() vs add().
     """
     
     @property
