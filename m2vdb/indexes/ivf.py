@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict, Tuple
 import numpy as np
+import os
 from sklearn.cluster import KMeans
 from concurrent.futures import ThreadPoolExecutor
 import warnings
@@ -453,3 +454,50 @@ class IVFIndex(Index):
     def size(self) -> int:
         """Return the total number of vectors in the index."""
         return len(self._id_to_cluster)
+    
+    def save_artifacts(self, artifacts_dir: str) -> None:
+        """
+        Save trained IVF artifacts to disk.
+        
+        Saves:
+        - centroids.npy: the cluster centroids
+        - metadata.npz: n_clusters, nprobe, centroid_norms_sq
+        """
+        if self.centroids is None:
+            raise RuntimeError("Cannot save artifacts: index not built")
+        
+        np.save(os.path.join(artifacts_dir, "ivf_centroids.npy"), self.centroids)
+        
+        # Save metadata
+        metadata = {
+            'n_clusters': self.n_clusters,
+            'nprobe': self.nprobe,
+        }
+        if self.centroid_norms_sq is not None:
+            metadata['centroid_norms_sq'] = self.centroid_norms_sq
+        
+        np.savez(os.path.join(artifacts_dir, "ivf_metadata.npz"), **metadata)
+    
+    def load_artifacts(self, artifacts_dir: str) -> None:
+        """
+        Load trained IVF artifacts from disk.
+        
+        Reconstructs the centroids without retraining.
+        """
+        centroids_path = os.path.join(artifacts_dir, "ivf_centroids.npy")
+        metadata_path = os.path.join(artifacts_dir, "ivf_metadata.npz")
+        
+        if not os.path.exists(centroids_path) or not os.path.exists(metadata_path):
+            raise FileNotFoundError("IVF artifacts not found")
+        
+        # Load centroids
+        self.centroids = np.load(centroids_path)
+        
+        # Load metadata
+        metadata = np.load(metadata_path)
+        self.n_clusters = int(metadata['n_clusters'])
+        self.nprobe = int(metadata['nprobe'])
+        
+        if 'centroid_norms_sq' in metadata:
+            self.centroid_norms_sq = metadata['centroid_norms_sq']
+

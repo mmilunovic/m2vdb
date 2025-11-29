@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict
 import numpy as np
+import os
 from sklearn.cluster import KMeans
 from concurrent.futures import ThreadPoolExecutor
 
@@ -348,3 +349,52 @@ class PQIndex(Index):
     def size(self) -> int:
         """Return the number of vectors currently in the index."""
         return len(self.ids)
+    
+    def save_artifacts(self, artifacts_dir: str) -> None:
+        """
+        Save trained PQ artifacts to disk.
+        
+        Saves:
+        - codebooks.npy: the trained codebooks (centroids)
+        - metadata.npz: other important state (n_subvectors, n_clusters, subvector_dim)
+        """
+        if self.codebooks is None:
+            raise RuntimeError("Cannot save artifacts: index not built")
+        
+        np.save(os.path.join(artifacts_dir, "pq_codebooks.npy"), self.codebooks)
+        
+        # Save metadata
+        np.savez(
+            os.path.join(artifacts_dir, "pq_metadata.npz"),
+            n_subvectors=self.n_subvectors,
+            n_clusters=self.n_clusters,
+            subvector_dim=self.subvector_dim,
+        )
+    
+    def load_artifacts(self, artifacts_dir: str) -> None:
+        """
+        Load trained PQ artifacts from disk.
+        
+        Reconstructs the codebooks and kmeans models without retraining.
+        """
+        codebooks_path = os.path.join(artifacts_dir, "pq_codebooks.npy")
+        metadata_path = os.path.join(artifacts_dir, "pq_metadata.npz")
+        
+        if not os.path.exists(codebooks_path) or not os.path.exists(metadata_path):
+            raise FileNotFoundError("PQ artifacts not found")
+        
+        # Load codebooks
+        self.codebooks = np.load(codebooks_path)
+        
+        # Load metadata
+        metadata = np.load(metadata_path)
+        self.subvector_dim = int(metadata['subvector_dim'])
+        
+        # Reconstruct kmeans models from codebooks for fast encoding
+        self.kmeans_models = []
+        for m in range(self.n_subvectors):
+            kmeans = KMeans(n_clusters=self.n_clusters, n_init=1, max_iter=1)
+            # Fake fit by directly setting cluster centers
+            kmeans.cluster_centers_ = self.codebooks[m]
+            kmeans._n_threads = 1
+            self.kmeans_models.append(kmeans)
