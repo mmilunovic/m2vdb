@@ -29,7 +29,6 @@ Examples:
 import argparse
 from rich.console import Console
 
-
 from benchmarks.datasets import load_sift1m, load_fasttext
 from benchmarks.benchmark import BenchmarkRunner
 from m2vdb import Collection
