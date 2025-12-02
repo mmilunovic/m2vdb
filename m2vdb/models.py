@@ -6,6 +6,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+class CollectionNotFound(Exception):
+    """Raised when a collection does not exist."""
+    pass
+
+
 class SearchResult(BaseModel):
     """Search result with ID, distance, and optional metadata."""
     id: str

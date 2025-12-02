@@ -6,6 +6,7 @@ from .client import M2VDBClient
 from .collection import Collection
 from .models import SearchResult, Vector
 from .indexes import Index, BruteForceIndex, PQIndex, IVFIndex
+from .storage import CollectionManager
 
 __version__ = "0.1.0"
 
@@ -18,6 +19,7 @@ __all__ = [
     "BruteForceIndex",
     "PQIndex",
     "IVFIndex",
+    "CollectionManager",
 ]
 
 # Optional Rust index

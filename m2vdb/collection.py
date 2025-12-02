@@ -8,7 +8,7 @@ import numpy as np
 from .indexes import Index, BruteForceIndex, PQIndex, IVFIndex, HAS_RUST
 from .models import SearchResult
 
-# Conditionally import Rust index if available
+# Import Rust index if available
 if HAS_RUST:
     from .indexes import RustBruteForceIndex
 
@@ -255,3 +255,5 @@ class Collection:
                 "total_mb": round(total_bytes / 1024 / 1024, 2),
             }
         }
+
+
