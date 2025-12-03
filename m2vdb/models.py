@@ -23,6 +23,7 @@ class CreateIndexRequest(BaseModel):
     dimension: int = Field(gt=0, le=10000, description="Vector dimensionality")
     metric: Literal["cosine", "euclidean"] = Field(default="cosine", description="Distance metric")
     index_type: Literal["brute_force", "pq", "rust_brute_force", "ivf"] = Field(default="brute_force", description="Index implementation")
+    index_params: dict[str, Any] | None = Field(default=None, description="Optional index-specific parameters (e.g., n_subvectors, n_clusters for PQ)")
 
 
 class IndexInfo(BaseModel):
