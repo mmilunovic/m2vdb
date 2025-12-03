@@ -356,12 +356,31 @@ class PQIndex(Index):
         
         Saves:
         - codebooks.npy: the trained codebooks (centroids)
+        - quantized_codes.npy: the encoded vectors (tiny memory footprint!)
+        - ids.npy: the vector IDs
         - metadata.npz: other important state (n_subvectors, n_clusters, subvector_dim)
+        
+        If index is not yet built (not enough training samples), saves empty state.
         """
         if self.codebooks is None:
-            raise RuntimeError("Cannot save artifacts: index not built")
+            # Index not built yet - save empty state marker
+            # This happens when we have < n_clusters vectors for PQ training
+            np.savez(
+                os.path.join(artifacts_dir, "pq_metadata.npz"),
+                n_subvectors=self.n_subvectors,
+                n_clusters=self.n_clusters,
+                subvector_dim=self.subvector_dim,
+                is_built=False  # Marker that index is not trained yet
+            )
+            return
         
         np.save(os.path.join(artifacts_dir, "pq_codebooks.npy"), self.codebooks)
+        
+        # Save quantized codes and IDs (these are tiny but slow to recompute)
+        if self.quantized_codes is not None:
+            np.save(os.path.join(artifacts_dir, "pq_quantized_codes.npy"), self.quantized_codes)
+        if self.ids:
+            np.save(os.path.join(artifacts_dir, "pq_ids.npy"), np.array(self.ids))
         
         # Save metadata
         np.savez(
@@ -375,20 +394,44 @@ class PQIndex(Index):
         """
         Load trained PQ artifacts from disk.
         
-        Reconstructs the codebooks and kmeans models without retraining.
+        Reconstructs the codebooks, quantized codes, IDs, and kmeans models without retraining.
+        If index was not built (not enough samples), loads empty state.
         """
         codebooks_path = os.path.join(artifacts_dir, "pq_codebooks.npy")
         metadata_path = os.path.join(artifacts_dir, "pq_metadata.npz")
         
-        if not os.path.exists(codebooks_path) or not os.path.exists(metadata_path):
-            raise FileNotFoundError("PQ artifacts not found")
+        if not os.path.exists(metadata_path):
+            raise FileNotFoundError("PQ metadata not found")
         
-        # Load codebooks
+        # Load metadata first to check if index was built
+        metadata = np.load(metadata_path)
+        
+        # Check if index was built when saved
+        if 'is_built' in metadata and not metadata['is_built']:
+            # Index was not trained when saved (not enough samples)
+            # Keep codebooks as None - will train when enough vectors are added
+            self.codebooks = None
+            return
+        
+        # Index was built - load codebooks
+        if not os.path.exists(codebooks_path):
+            raise FileNotFoundError("PQ codebooks not found")
+        
         self.codebooks = np.load(codebooks_path)
-        
-        # Load metadata
         metadata = np.load(metadata_path)
         self.subvector_dim = int(metadata['subvector_dim'])
+        
+        # Load quantized codes and IDs if they exist
+        quantized_codes_path = os.path.join(artifacts_dir, "pq_quantized_codes.npy")
+        ids_path = os.path.join(artifacts_dir, "pq_ids.npy")
+        
+        if os.path.exists(quantized_codes_path):
+            self.quantized_codes = np.load(quantized_codes_path)
+        
+        if os.path.exists(ids_path):
+            ids_array = np.load(ids_path)
+            self.ids = [str(id) for id in ids_array]
+            self._id_to_idx = {id: idx for idx, id in enumerate(self.ids)}
         
         # Reconstruct kmeans models from codebooks for fast encoding
         self.kmeans_models = []
