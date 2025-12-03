@@ -12,7 +12,8 @@ import numpy as np
 from contextlib import asynccontextmanager
 import time
 from pathlib import Path
-
+import os
+ 
 from .collection import Collection
 from .storage import CollectionManager
 from .models import (
@@ -35,7 +36,8 @@ API_KEYS = {
     "sk-test-user2": "user2"
 }
 
-DATA_ROOT = Path(__file__).parent.parent / "data" / "collections"
+# DATA_ROOT = Path(__file__).parent.parent / "data" / "collections"
+DATA_ROOT = Path(os.getenv("M2VDB_DATA_DIR", Path(__file__).parent.parent / "data")) / "collections"
 collection_manager = CollectionManager(DATA_ROOT)
 
 
@@ -92,19 +94,14 @@ async def create_index(
     user_id: str = Depends(get_current_user)
 ):
     """Create a new index."""
-    if collection_manager.collection_exists(user_id, name):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Index '{name}' already exists"
-        )
-    
     try:
-        db = collection_manager.get_or_create_collection(
+        db = collection_manager.create_collection(
             user_id=user_id,
             name=name,
             dimension=request.dimension,
             metric=request.metric,
             index_type=request.index_type,
+            index_params=request.index_params or {}
         )
         
         return IndexInfo(
@@ -113,6 +110,11 @@ async def create_index(
             metric=db.metric,
             index_type=db.index_type,
             size=0
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e)
         )
     except NotImplementedError as e:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
@@ -177,27 +179,28 @@ async def upsert_vectors(
     request: UpsertRequest,
     user_id: str = Depends(get_current_user)
 ):
-    """Upsert (insert/update) vectors."""
+    """
+    Upsert (insert/update) vectors.
+    
+    Uses batch_upsert internally for optimal performance:
+    - All vectors are stored first
+    - Index is rebuilt/trained once at the end
+    - Much faster for PQ indexes (1 rebuild instead of N rebuilds)
+    """
     db = _get_index(name, user_id)
     
-    upserted = 0
-    errors = []
-    
-    for vec in request.vectors:
-        try:
-            vector_array = np.array(vec.vector, dtype=np.float32)
-            db.upsert(vec.id, vector_array, vec.metadata)
-            upserted += 1
-        except ValueError as e:
-            errors.append(f"{vec.id}: {str(e)}")
-    
-    if upserted > 0:
-        collection_manager.save_collection(user_id, name)
-    
-    if errors and upserted == 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(errors[:5]))
-    
-    return UpsertResponse(upserted_count=upserted)
+    try:
+        # Extract all vectors from request
+        ids = [vec.id for vec in request.vectors]
+        vectors = [np.array(vec.vector, dtype=np.float32) for vec in request.vectors]
+        metadata = [vec.metadata for vec in request.vectors]
+        
+        # Use batch_upsert for optimal performance
+        upserted = collection_manager.batch_upsert(user_id, name, ids, vectors, metadata)
+        
+        return UpsertResponse(upserted_count=upserted)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 @app.post("/indexes/{name}/search", response_model=SearchResponse)
 async def search_vectors(
@@ -239,7 +242,8 @@ async def delete_vector(
             detail=f"Vector '{id}' not found"
         )
     
-    collection_manager.save_collection(user_id, name)
+    # Auto-save after mutation
+    collection_manager._save_collection(user_id, name, db)
     
     return DeleteResponse(deleted_count=1)
 

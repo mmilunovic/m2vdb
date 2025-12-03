@@ -202,7 +202,8 @@ class M2VDBClient:
         name: str,
         dimension: int,
         metric: str = "cosine",
-        index_type: str = "brute_force"
+        index_type: str = "brute_force",
+        index_params: dict[str, Any] | None = None
     ) -> '_IndexHandle':
         """
         Create a new index.
@@ -211,19 +212,26 @@ class M2VDBClient:
             name: Index name (unique per user)
             dimension: Vector dimensionality
             metric: Distance metric ('cosine' or 'euclidean')
-            index_type: Index implementation ('brute_force')
+            index_type: Index implementation ('brute_force', 'pq', 'rust_brute_force', 'ivf')
+            index_params: Optional index-specific parameters:
+                - PQ: n_subvectors (int), n_clusters (int)
+                - IVF: n_lists (int)
             
         Returns:
             Index handle for operations
         """
+        payload = {
+            "dimension": dimension,
+            "metric": metric,
+            "index_type": index_type
+        }
+        if index_params is not None:
+            payload["index_params"] = index_params
+            
         try:
             response = self._session.post(
                 f"/indexes/{name}",
-                json={
-                    "dimension": dimension,
-                    "metric": metric,
-                    "index_type": index_type
-                }
+                json=payload
             )
             response.raise_for_status()
             return _IndexHandle(name, self)
