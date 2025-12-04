@@ -20,7 +20,7 @@ echo ""
 cleanup() {
     echo ""
     echo -e "${YELLOW}🧹 Cleaning up...${NC}"
-    docker-compose down
+    docker compose down
 }
 
 # Set trap to cleanup on exit
@@ -28,13 +28,13 @@ trap cleanup EXIT
 
 # Start docker-compose
 echo -e "${CYAN}📦 Starting docker-compose...${NC}"
-docker-compose up -d
+docker compose up -d
 
 # Give it a moment to start
 sleep 2
 
 # Check if container is running
-if ! docker-compose ps | grep -q "Up"; then
+if ! docker compose ps | grep -q "Up"; then
     echo -e "${RED}✗ Failed to start docker-compose${NC}"
     exit 1
 fi

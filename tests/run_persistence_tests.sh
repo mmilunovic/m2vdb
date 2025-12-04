@@ -20,7 +20,7 @@ echo ""
 cleanup() {
     echo ""
     echo -e "${YELLOW}🧹 Final cleanup...${NC}"
-    docker-compose down
+    docker compose down
     echo -e "${GREEN}✓ Cleaned up${NC}"
 }
 
@@ -32,10 +32,10 @@ echo -e "${CYAN}Phase 1: Creating persistent data${NC}"
 echo -e "${CYAN}========================================${NC}"
 
 echo -e "${CYAN}📦 Starting docker-compose...${NC}"
-docker-compose up -d
+docker compose up -d
 sleep 2
 
-if ! docker-compose ps | grep -q "Up"; then
+if ! docker compose ps | grep -q "Up"; then
     echo -e "${RED}✗ Failed to start docker-compose${NC}"
     exit 1
 fi
@@ -57,15 +57,15 @@ echo -e "${CYAN}Phase 2: Restarting container${NC}"
 echo -e "${CYAN}========================================${NC}"
 
 echo -e "${YELLOW}🔄 Stopping docker-compose...${NC}"
-docker-compose down
+docker compose down
 sleep 2
 echo -e "${GREEN}✓ Container stopped${NC}"
 
 echo -e "${CYAN}📦 Starting docker-compose again...${NC}"
-docker-compose up -d
+docker compose up -d
 sleep 3
 
-if ! docker-compose ps | grep -q "Up"; then
+if ! docker compose ps | grep -q "Up"; then
     echo -e "${RED}✗ Failed to restart docker-compose${NC}"
     exit 1
 fi
