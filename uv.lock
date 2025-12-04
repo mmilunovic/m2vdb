@@ -35,6 +35,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cachetools"
+version = "6.2.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/44/ca1675be2a83aeee1886ab745b28cda92093066590233cc501890eb8417a/cachetools-6.2.2.tar.gz", hash = "sha256:8e6d266b25e539df852251cfd6f990b4bc3a141db73b939058d809ebd2590fc6", size = 31571, upload-time = "2025-11-13T17:42:51.465Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e6/46/eb6eca305c77a4489affe1c5d8f4cae82f285d9addd8de4ec084a7184221/cachetools-6.2.2-py3-none-any.whl", hash = "sha256:6c09c98183bf58560c97b2abfcedcbaf6a896a490f534b031b661d3723b45ace", size = 11503, upload-time = "2025-11-13T17:42:50.232Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2025.10.5"
 source = { registry = "https://pypi.org/simple" }
@@ -219,43 +228,64 @@ name = "m2vdb"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cachetools" },
     { name = "faiss-cpu" },
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "maturin" },
     { name = "numpy" },
+    { name = "packaging" },
     { name = "psutil" },
     { name = "pydantic" },
     { name = "requests" },
     { name = "rich" },
-    { name = "rust-indexes" },
     { name = "scikit-learn" },
     { name = "uvicorn" },
 ]
 
+[package.optional-dependencies]
+all = [
+    { name = "faiss-cpu" },
+    { name = "psutil" },
+    { name = "rich" },
+]
+benchmark = [
+    { name = "faiss-cpu" },
+    { name = "psutil" },
+    { name = "rich" },
+]
+
 [package.dev-dependencies]
 dev = [
+    { name = "maturin" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "faiss-cpu", specifier = ">=1.9.0" },
+    { name = "cachetools", specifier = ">=6.2.2" },
+    { name = "faiss-cpu", specifier = ">=1.13.0" },
+    { name = "faiss-cpu", marker = "extra == 'benchmark'", specifier = ">=1.9.0" },
     { name = "fastapi", specifier = ">=0.121.0" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "maturin", specifier = ">=1.10.1" },
+    { name = "m2vdb", extras = ["benchmark"], marker = "extra == 'all'" },
     { name = "numpy", specifier = ">=2.3.4" },
-    { name = "psutil", specifier = ">=6.1.0" },
+    { name = "packaging", specifier = ">=25.0" },
+    { name = "psutil", specifier = ">=7.1.3" },
+    { name = "psutil", marker = "extra == 'benchmark'", specifier = ">=6.1.0" },
     { name = "pydantic", specifier = ">=2.12.3" },
     { name = "requests", specifier = ">=2.32.3" },
-    { name = "rich", specifier = ">=13.9.4" },
-    { name = "rust-indexes", directory = "rust" },
+    { name = "rich", specifier = ">=14.2.0" },
+    { name = "rich", marker = "extra == 'benchmark'", specifier = ">=13.9.4" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "uvicorn", specifier = ">=0.38.0" },
 ]
+provides-extras = ["benchmark", "all"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.14.6" }]
+dev = [
+    { name = "maturin", specifier = ">=1.10.1" },
+    { name = "ruff", specifier = ">=0.14.6" },
+]
 
 [[package]]
 name = "markdown-it-py"
@@ -541,10 +571,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/02/82240553b77fd1341f80ebb3eaae43ba011c7a91b4224a9f317d8e6591af/ruff-0.14.6-py3-none-win_amd64.whl", hash = "sha256:390e6480c5e3659f8a4c8d6a0373027820419ac14fa0d2713bd8e6c3e125b8b9", size = 14432087, upload-time = "2025-11-21T14:26:10.891Z" },
     { url = "https://files.pythonhosted.org/packages/a5/1f/93f9b0fad9470e4c829a5bb678da4012f0c710d09331b860ee555216f4ea/ruff-0.14.6-py3-none-win_arm64.whl", hash = "sha256:d43c81fbeae52cfa8728d8766bbf46ee4298c888072105815b392da70ca836b2", size = 13520930, upload-time = "2025-11-21T14:26:13.951Z" },
 ]
-
-[[package]]
-name = "rust-indexes"
-source = { directory = "rust" }
 
 [[package]]
 name = "scikit-learn"

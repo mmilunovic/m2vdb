@@ -1,9 +1,8 @@
 """
 FastAPI server for m2vdb vector database.
 
-Pinecone-style API with multi-index support:
-- Control plane: Create/list/delete indexes
-- Data plane: Vector operations per index
+Provides a REST API for managing vector indexes and performing similarity search.
+Supports multi-tenant access with API key authentication.
 """
 
 from fastapi import FastAPI, HTTPException, status, Depends
@@ -12,8 +11,11 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import numpy as np
 from contextlib import asynccontextmanager
 import time
-
-from .database import VectorDatabase
+from pathlib import Path
+import os
+ 
+from .collection import Collection
+from .storage import CollectionManager
 from .models import (
     CreateIndexRequest,
     IndexInfo,
@@ -23,6 +25,7 @@ from .models import (
     SearchResponse,
     DeleteResponse,
     FetchResponse,
+    CollectionNotFound,
 )
 
 
@@ -33,13 +36,9 @@ API_KEYS = {
     "sk-test-user2": "user2"
 }
 
-indexes: dict[str, dict[str, VectorDatabase]] = {
-    "user1": {},
-    "user2": {}
-}
-
-# Server startup time for uptime calculation
-SERVER_START_TIME = time.time()
+# DATA_ROOT = Path(__file__).parent.parent / "data" / "collections"
+DATA_ROOT = Path(os.getenv("M2VDB_DATA_DIR", Path(__file__).parent.parent / "data")) / "collections"
+collection_manager = CollectionManager(DATA_ROOT)
 
 
 def get_current_user(auth: HTTPAuthorizationCredentials = Depends(security)) -> str:
@@ -59,16 +58,22 @@ def get_current_user(auth: HTTPAuthorizationCredentials = Depends(security)) -> 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
-    total_indexes = sum(len(user_indexes) for user_indexes in indexes.values())
-    print(f"m2vdb server starting... {total_indexes} indexes loaded across {len(indexes)} users")
+    total_indexes = sum(
+        len(collection_manager.list_collections(user_id))
+        for user_id in API_KEYS.values()
+    )
+    print(f"m2vdb server starting... {total_indexes} indexes on disk")
     yield
-    total_indexes = sum(len(user_indexes) for user_indexes in indexes.values())
-    print(f"m2vdb server shutting down... {total_indexes} indexes in memory")
+    total_indexes = sum(
+        len(collection_manager.list_collections(user_id))
+        for user_id in API_KEYS.values()
+    )
+    print(f"m2vdb server shutting down... {total_indexes} indexes on disk")
 
 
 app = FastAPI(
     title="m2vdb",
-    description="Vector database with Pinecone-style API",
+    description="Vector database with REST API",
     version="0.1.0",
     lifespan=lifespan
 )
@@ -89,19 +94,15 @@ async def create_index(
     user_id: str = Depends(get_current_user)
 ):
     """Create a new index."""
-    if name in indexes[user_id]:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Index '{name}' already exists"
-        )
-    
     try:
-        db = VectorDatabase(
+        db = collection_manager.create_collection(
+            user_id=user_id,
+            name=name,
             dimension=request.dimension,
             metric=request.metric,
-            index_type=request.index_type
+            index_type=request.index_type,
+            index_params=request.index_params or {}
         )
-        indexes[user_id][name] = db
         
         return IndexInfo(
             name=name,
@@ -110,6 +111,11 @@ async def create_index(
             index_type=db.index_type,
             size=0
         )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e)
+        )
     except NotImplementedError as e:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
 
@@ -117,51 +123,54 @@ async def create_index(
 @app.get("/indexes")
 async def list_indexes(user_id: str = Depends(get_current_user)):
     """List all indexes for the authenticated user."""
-    return {
-        "indexes": [
-            IndexInfo(
-                name=name,
-                dimension=db.dimension,
-                metric=db.metric,
-                index_type=db.index_type,
-                size=len(db)
-            )
-            for name, db in indexes[user_id].items()
-        ]
-    }
+    index_names = collection_manager.list_collections(user_id)
+    
+    indexes_info = []
+    for name in index_names:
+        db = collection_manager.get_collection(user_id, name)
+        indexes_info.append(IndexInfo(
+            name=name,
+            dimension=db.dimension,
+            metric=db.metric,
+            index_type=db.index_type,
+            size=len(db)
+        ))
+    
+    return {"indexes": indexes_info}
 
 
 @app.get("/indexes/{name}", response_model=IndexInfo)
 async def get_index(name: str, user_id: str = Depends(get_current_user)):
     """Get index info."""
-    if name not in indexes[user_id]:
+    try:
+        db = collection_manager.get_collection(user_id, name)
+        return IndexInfo(
+            name=name,
+            dimension=db.dimension,
+            metric=db.metric,
+            index_type=db.index_type,
+            size=len(db)
+        )
+    except CollectionNotFound:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Index '{name}' not found")
-    
-    db = indexes[user_id][name]
-    return IndexInfo(
-        name=name,
-        dimension=db.dimension,
-        metric=db.metric,
-        index_type=db.index_type,
-        size=len(db)
-    )
 
 
 @app.delete("/indexes/{name}")
 async def delete_index(name: str, user_id: str = Depends(get_current_user)):
     """Delete an index."""
-    if name not in indexes[user_id]:
+    try:
+        collection_manager.delete_collection(user_id, name)
+        return {"message": f"Index '{name}' deleted"}
+    except CollectionNotFound:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Index '{name}' not found")
-    
-    del indexes[user_id][name]
-    return {"message": f"Index '{name}' deleted"}
 
 
-def _get_index(name: str, user_id: str) -> VectorDatabase:
+def _get_index(name: str, user_id: str) -> Collection:
     """Helper to get index or raise 404."""
-    if name not in indexes[user_id]:
+    try:
+        return collection_manager.get_collection(user_id, name)
+    except CollectionNotFound:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Index '{name}' not found")
-    return indexes[user_id][name]
 
 
 @app.post("/indexes/{name}/vectors", response_model=UpsertResponse)
@@ -170,24 +179,28 @@ async def upsert_vectors(
     request: UpsertRequest,
     user_id: str = Depends(get_current_user)
 ):
-    """Upsert (insert/update) vectors."""
+    """
+    Upsert (insert/update) vectors.
+    
+    Uses batch_upsert internally for optimal performance:
+    - All vectors are stored first
+    - Index is rebuilt/trained once at the end
+    - Much faster for PQ indexes (1 rebuild instead of N rebuilds)
+    """
     db = _get_index(name, user_id)
     
-    upserted = 0
-    errors = []
-    
-    for vec in request.vectors:
-        try:
-            vector_array = np.array(vec.vector, dtype=np.float32)
-            db.upsert(vec.id, vector_array, vec.metadata)
-            upserted += 1
-        except ValueError as e:
-            errors.append(f"{vec.id}: {str(e)}")
-    
-    if errors and upserted == 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(errors[:5]))
-    
-    return UpsertResponse(upserted_count=upserted)
+    try:
+        # Extract all vectors from request
+        ids = [vec.id for vec in request.vectors]
+        vectors = [np.array(vec.vector, dtype=np.float32) for vec in request.vectors]
+        metadata = [vec.metadata for vec in request.vectors]
+        
+        # Use batch_upsert for optimal performance
+        upserted = collection_manager.batch_upsert(user_id, name, ids, vectors, metadata)
+        
+        return UpsertResponse(upserted_count=upserted)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 @app.post("/indexes/{name}/search", response_model=SearchResponse)
 async def search_vectors(
@@ -229,6 +242,9 @@ async def delete_vector(
             detail=f"Vector '{id}' not found"
         )
     
+    # Auto-save after mutation
+    collection_manager._save_collection(user_id, name, db)
+    
     return DeleteResponse(deleted_count=1)
 
 
@@ -252,33 +268,37 @@ async def fetch_vector(
 @app.get("/")
 async def root():
     """API info."""
-    total_indexes = sum(len(user_indexes) for user_indexes in indexes.values())
+    total_indexes = sum(
+        len(collection_manager.list_collections(user_id))
+        for user_id in API_KEYS.values()
+    )
     return {
         "name": "m2vdb",
         "version": "0.1.0",
         "total_indexes": total_indexes,
-        "users": len(indexes)
+        "users": len(API_KEYS)
     }
 
 
 @app.get("/health")
 async def health():
-    """Simple health check - just confirms the service is alive"""
+    """Health check."""
     return {"status": "healthy"}
 
 
 @app.get("/stats")
 async def stats(user_id: str = Depends(get_current_user)):
-    """Detailed resource usage for the authenticated user"""
-    # Aggregate stats across all user's indexes
+    """Resource usage for the authenticated user."""
     total_vectors = 0
     total_vectors_bytes = 0
     total_index_bytes = 0
     total_metadata_bytes = 0
     index_details = []
     
-    for name, db in indexes[user_id].items():
-        # Get stats from database instance
+    index_names = collection_manager.list_collections(user_id)
+    
+    for name in index_names:
+        db = collection_manager.get_collection(user_id, name)
         db_stats = db.get_stats()
         
         total_vectors += db_stats["num_vectors"]
@@ -303,7 +323,7 @@ async def stats(user_id: str = Depends(get_current_user)):
     return {
         "user": user_id,
         "indexes": {
-            "total": len(indexes[user_id]),
+            "total": len(index_names),
             "details": index_details
         },
         "vectors": {

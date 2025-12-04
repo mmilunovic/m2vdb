@@ -8,7 +8,7 @@ import numpy as np
 import psutil
 import os
 
-from m2vdb import VectorDatabase
+from m2vdb import Collection
 
 
 def compute_recall(
@@ -126,19 +126,19 @@ def compute_qps(n_queries: int, total_time: float) -> float:
     return n_queries / total_time if total_time > 0 else 0.0
 
 
-def measure_index_memory(db: VectorDatabase) -> Dict[str, float]:
+def measure_index_memory(db: Collection) -> Dict[str, float]:
     """
     Measure memory used by index data structures only.
     
     This measures only the index's internal structures, not db._vectors
-    (which is a VectorDatabase implementation detail):
+    (which is a Collection implementation detail):
     
     - BruteForce: vectors array stored in index.vectors
     - PQ: codebooks + quantized codes (much smaller than full vectors!)
     - RustBruteForce: vectors + norms stored in Rust
     
     Args:
-        db: VectorDatabase instance to measure
+        db: Collection instance to measure
     
     Returns:
         Dict with:

@@ -1,7 +1,7 @@
 """
 Minimal FAISS wrappers for benchmarking comparison.
 
-Matches m2vdb's VectorDatabase interface so benchmark code works unchanged.
+Matches m2vdb's Collection interface so benchmark code works unchanged.
 Uses FAISS directly without unnecessary overhead.
 """
 
@@ -11,7 +11,7 @@ import faiss
 
 
 class FAISSIndexWrapper:
-    """Minimal FAISS wrapper matching m2vdb VectorDatabase interface."""
+    """Minimal FAISS wrapper matching m2vdb Collection interface."""
     
     def __init__(self, dimension: int, metric: str = "euclidean"):
         """

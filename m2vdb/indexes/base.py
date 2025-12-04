@@ -7,7 +7,7 @@ class Index(ABC):
     Abstract base class for vector index implementations.
     
     All indexes must track whether they have been built via the is_built property.
-    This allows VectorDatabase to decide when to call build() vs add().
+    This allows Collection to decide when to call build() vs add().
     """
     
     @property
@@ -96,4 +96,28 @@ class Index(ABC):
     @abstractmethod
     def size(self) -> int:
         """Return the number of vectors currently in the index."""
+        pass
+    
+    def save_artifacts(self, artifacts_dir: str) -> None:
+        """
+        Save trained index artifacts (codebooks, centroids, etc.) to disk.
+        
+        Optional method for indexes that have trainable components.
+        Default implementation does nothing (for indexes like brute_force).
+        
+        Args:
+            artifacts_dir: Directory to save artifacts to
+        """
+        pass
+    
+    def load_artifacts(self, artifacts_dir: str) -> None:
+        """
+        Load trained index artifacts from disk.
+        
+        Optional method for indexes that have trainable components.
+        Default implementation does nothing (for indexes like brute_force).
+        
+        Args:
+            artifacts_dir: Directory to load artifacts from
+        """
         pass

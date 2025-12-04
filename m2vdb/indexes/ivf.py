@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict, Tuple
 import numpy as np
+import os
 from sklearn.cluster import KMeans
 from concurrent.futures import ThreadPoolExecutor
 import warnings
@@ -453,3 +454,101 @@ class IVFIndex(Index):
     def size(self) -> int:
         """Return the total number of vectors in the index."""
         return len(self._id_to_cluster)
+    
+    def save_artifacts(self, artifacts_dir: str) -> None:
+        """
+        Save trained IVF artifacts to disk.
+        
+        Saves:
+        - centroids.npy: the cluster centroids
+        - metadata.npz: n_clusters, nprobe, centroid_norms_sq
+        - inverted_lists/: all inverted lists (vectors, ids, norms_sq per cluster)
+        - id_to_cluster.npz: mapping for fast lookups
+        """
+        if self.centroids is None:
+            raise RuntimeError("Cannot save artifacts: index not built")
+        
+        np.save(os.path.join(artifacts_dir, "ivf_centroids.npy"), self.centroids)
+        
+        # Save metadata
+        metadata = {
+            'n_clusters': self.n_clusters,
+            'nprobe': self.nprobe,
+        }
+        if self.centroid_norms_sq is not None:
+            metadata['centroid_norms_sq'] = self.centroid_norms_sq
+        
+        np.savez(os.path.join(artifacts_dir, "ivf_metadata.npz"), **metadata)
+        
+        # Save inverted lists
+        invlists_dir = os.path.join(artifacts_dir, "ivf_inverted_lists")
+        os.makedirs(invlists_dir, exist_ok=True)
+        
+        for cluster_id, inv_list in self.inverted_lists.items():
+            cluster_file = os.path.join(invlists_dir, f"cluster_{cluster_id}.npz")
+            save_dict = {
+                'vectors': inv_list['vectors'],
+                'ids': inv_list['ids']
+            }
+            if 'norms_sq' in inv_list:
+                save_dict['norms_sq'] = inv_list['norms_sq']
+            np.savez(cluster_file, **save_dict)
+        
+        # Save ID to cluster mapping for fast lookups
+        if self._id_to_cluster:
+            ids = list(self._id_to_cluster.keys())
+            clusters = [self._id_to_cluster[id] for id in ids]
+            np.savez(
+                os.path.join(artifacts_dir, "ivf_id_to_cluster.npz"),
+                ids=np.array(ids),
+                clusters=np.array(clusters)
+            )
+    
+    def load_artifacts(self, artifacts_dir: str) -> None:
+        """
+        Load trained IVF artifacts from disk.
+        
+        Reconstructs the centroids, inverted lists, and ID mappings without retraining.
+        """
+        centroids_path = os.path.join(artifacts_dir, "ivf_centroids.npy")
+        metadata_path = os.path.join(artifacts_dir, "ivf_metadata.npz")
+        
+        if not os.path.exists(centroids_path) or not os.path.exists(metadata_path):
+            raise FileNotFoundError("IVF artifacts not found")
+        
+        # Load centroids
+        self.centroids = np.load(centroids_path)
+        
+        # Load metadata
+        metadata = np.load(metadata_path)
+        self.n_clusters = int(metadata['n_clusters'])
+        self.nprobe = int(metadata['nprobe'])
+        
+        if 'centroid_norms_sq' in metadata:
+            self.centroid_norms_sq = metadata['centroid_norms_sq']
+        
+        # Load inverted lists
+        self.inverted_lists = {}
+        invlists_dir = os.path.join(artifacts_dir, "ivf_inverted_lists")
+        
+        if os.path.exists(invlists_dir):
+            for cluster_id in range(self.n_clusters):
+                cluster_file = os.path.join(invlists_dir, f"cluster_{cluster_id}.npz")
+                if os.path.exists(cluster_file):
+                    data = np.load(cluster_file, allow_pickle=True)
+                    inv_list = {
+                        'vectors': data['vectors'],
+                        'ids': data['ids']
+                    }
+                    if 'norms_sq' in data:
+                        inv_list['norms_sq'] = data['norms_sq']
+                    self.inverted_lists[cluster_id] = inv_list
+        
+        # Load ID to cluster mapping
+        id_to_cluster_path = os.path.join(artifacts_dir, "ivf_id_to_cluster.npz")
+        if os.path.exists(id_to_cluster_path):
+            data = np.load(id_to_cluster_path, allow_pickle=True)
+            ids = data['ids']
+            clusters = data['clusters']
+            self._id_to_cluster = {str(id): int(cluster) for id, cluster in zip(ids, clusters)}
+

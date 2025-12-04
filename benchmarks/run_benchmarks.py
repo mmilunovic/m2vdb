@@ -29,10 +29,9 @@ Examples:
 import argparse
 from rich.console import Console
 
-
 from benchmarks.datasets import load_sift1m, load_fasttext
 from benchmarks.benchmark import BenchmarkRunner
-from m2vdb import VectorDatabase
+from m2vdb import Collection
 from benchmarks.faiss_wrappers import create_faiss_index
 
 
@@ -52,7 +51,7 @@ def create_benchmark_configs(dimension: int, metric: str, compare_faiss: bool = 
     
     configs.append({
         'name': f'PyBruteForce-{metric}',
-        'factory': lambda: VectorDatabase(
+        'factory': lambda: Collection(
             dimension=dimension,
             metric=metric,
             index_type='brute_force'
@@ -61,7 +60,7 @@ def create_benchmark_configs(dimension: int, metric: str, compare_faiss: bool = 
     
     configs.append({
         'name': f'RustBruteForce-{metric}',
-        'factory': lambda: VectorDatabase(
+        'factory': lambda: Collection(
             dimension=dimension,
             metric=metric,
             index_type='rust_brute_force'
@@ -80,7 +79,7 @@ def create_benchmark_configs(dimension: int, metric: str, compare_faiss: bool = 
     
     configs.append({
         'name': f'PQ(m={m},k=256)-{metric}',
-        'factory': lambda m=m: VectorDatabase(
+        'factory': lambda m=m: Collection(
             dimension=dimension,
             metric=metric,
             index_type='pq',
@@ -93,7 +92,7 @@ def create_benchmark_configs(dimension: int, metric: str, compare_faiss: bool = 
     # nprobe will be set to sqrt(n_clusters) ≈ 31 for balanced recall/speed
     configs.append({
         'name': f'IVF(auto)-{metric}',
-        'factory': lambda: VectorDatabase(
+        'factory': lambda: Collection(
             dimension=dimension,
             metric=metric,
             index_type='ivf',

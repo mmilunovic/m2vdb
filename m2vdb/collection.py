@@ -1,6 +1,14 @@
 """
-High-level vector database API.
+High-level vector collection API.
 """
+
+# TODO: Index build/rebuild strategy improvements
+# - Decide if we should expose /train endpoint to users for manual control
+# - Implement 'threshold' rebuild strategy (rebuild every N vectors)
+# - Implement 'manual' rebuild strategy (only rebuild on explicit .build() call)
+# - Consider batch upsert optimization (add N vectors, rebuild once)
+# - Consider async/background rebuild for large indexes
+# Related: Currently only 'eager' (rebuild on every upsert) is implemented
 
 from typing import List, Optional, Dict, Any
 import numpy as np
@@ -8,16 +16,15 @@ import numpy as np
 from .indexes import Index, BruteForceIndex, PQIndex, IVFIndex, HAS_RUST
 from .models import SearchResult
 
-# Conditionally import Rust index if available
 if HAS_RUST:
     from .indexes import RustBruteForceIndex
 
 
-class VectorDatabase:
+class Collection:
     """
-    Vector database with metadata support and pluggable index backends.
+    Vector collection with metadata support and pluggable index backends.
     
-    Separates concerns: VectorDatabase manages IDs/metadata/API,
+    Separates concerns: Collection manages IDs/metadata/API,
     Index handles vector storage and search.
     """
     
@@ -27,7 +34,7 @@ class VectorDatabase:
         metric: str = 'cosine',
         index_type: str = 'brute_force',
         rebuild_strategy: str = 'eager',
-        index_params: Optional[Dict[str, Any]] = None
+        index_params: Optional[Dict[str, Any]] = None,
     ):
         """
         Args:
@@ -44,11 +51,12 @@ class VectorDatabase:
         self.index_type = index_type
         self.rebuild_strategy = rebuild_strategy
         self.index_params = index_params or {}
-        self._metadata: Dict[str, Dict[str, Any]] = {}
         self.index = self._create_index(index_type, metric, self.index_params)
         
-        # Store all vectors for rebuilding
+        # Storage for vectors and metadata (always in memory for 1M vectors)
         self._vectors: Dict[str, np.ndarray] = {}
+        self._metadata: Dict[str, Dict[str, Any]] = {}
+        
         self._upserts_since_rebuild = 0
         
     def _create_index(self, index_type: str, metric: str, index_params: Dict[str, Any]) -> Index:
@@ -79,7 +87,13 @@ class VectorDatabase:
         vector: np.ndarray, 
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
-        """Insert or update a vector in the database."""
+        """
+        Insert or update a vector in the collection.
+        
+        WARNING: For PQ indexes with many vectors, this is inefficient because it rebuilds
+        the index on every insert. For bulk loading, collect your vectors and call
+        batch_upsert() instead, or wait until you have >= n_clusters vectors before upserting.
+        """
         assert vector.shape == (self.dimension,), \
             f"Vector dimension {vector.shape} doesn't match {self.dimension}"
         
@@ -97,8 +111,61 @@ class VectorDatabase:
         if self._should_rebuild():
             self._rebuild_index()
         else:
-            # Incremental add to existing index
+            # Incremental add to existing index (only works if index already built)
             self.index.add(id, vector)
+    
+    def batch_upsert(
+        self,
+        ids: List[str],
+        vectors: List[np.ndarray],
+        metadata: Optional[List[Optional[Dict[str, Any]]]] = None
+    ) -> int:
+        """
+        Batch insert/update multiple vectors efficiently.
+        
+        This is the PROPER way to load many vectors at once, especially for
+        indexes like PQ that need training data. Stores all vectors first,
+        then rebuilds index once at the end.
+        
+        Args:
+            ids: List of unique string IDs
+            vectors: List of numpy arrays with shape (dimension,)
+            metadata: Optional list of metadata dicts (None entries allowed)
+        
+        Returns:
+            Number of vectors upserted
+        
+        Example:
+            >>> db.batch_upsert(
+            ...     ids=["id1", "id2"],
+            ...     vectors=[np.array([...]), np.array([...])],
+            ...     metadata=[{"category": "image"}, {"category": "text"}]
+            ... )
+        """
+        if len(ids) != len(vectors):
+            raise ValueError(f"ids and vectors must have same length ({len(ids)} vs {len(vectors)})")
+        
+        if metadata is not None and len(metadata) != len(ids):
+            raise ValueError(f"metadata must have same length as ids ({len(metadata)} vs {len(ids)})")
+        
+        count = 0
+        for i, (id, vector) in enumerate(zip(ids, vectors)):
+            assert vector.shape == (self.dimension,), \
+                f"Vector {i} dimension {vector.shape} doesn't match {self.dimension}"
+            
+            if id in self._vectors:
+                raise ValueError(f"ID '{id}' already exists. Delete first to update.")
+            
+            # Store vector and metadata (no rebuild yet)
+            self._vectors[id] = vector
+            if metadata is not None and metadata[i] is not None:
+                self._metadata[id] = metadata[i]
+            count += 1
+        
+        # Now rebuild once with all the new vectors
+        self._rebuild_index()
+        
+        return count
     
     def _rebuild_index(self) -> None:
         """
@@ -106,9 +173,37 @@ class VectorDatabase:
         
         Called based on rebuild strategy. For PQ, this retrains k-means.
         For BruteForce, this just reorganizes the array.
+        
+        TODO: HACK ALERT - PQ training minimum samples check
+        PQ index requires n_samples >= n_clusters for k-means training.
+        Currently we skip rebuild if not enough samples, which means:
+        - Search will fail or return empty results until we have enough vectors
+        - Vectors are still stored in _vectors, just not indexed yet
+        - Not ideal for production use
+        
+        Proper solutions to implement:
+        1. ✅ Batch API: batch_upsert() method implemented above.
+           This is the RIGHT way - store all vectors, rebuild once.
+        2. Manual build: Add rebuild_strategy='manual' + explicit build() method
+           so users control when to train. Good for bulk loading workflows.
+        3. Lazy training: Store vectors without index, train on first search.
+           Risky - search could be very slow unexpectedly.
+        4. Fallback index: Use BruteForce until enough samples for PQ.
+           Complex but provides smooth UX.
+        
+        For now: Skip rebuild if not enough samples (testing hack).
+        Vectors are stored and will be indexed once we hit the threshold.
         """
         if len(self._vectors) == 0:
             return
+        
+        # HACK: Check if we have enough samples for PQ training
+        if self.index_type == 'pq':
+            n_clusters = self.index_params.get('n_clusters', 256)
+            if len(self._vectors) < n_clusters:
+                # Not enough samples to train PQ - skip rebuild
+                # Vectors are stored, will be indexed when we have enough
+                return
         
         # Extract all vectors and IDs in consistent order
         ids = list(self._vectors.keys())
@@ -153,24 +248,25 @@ class VectorDatabase:
             for id, distance in raw_results
         ]
     
-    def fetch(self, id: str) -> Optional[tuple[np.ndarray, Optional[Dict[str, Any]]]]:
+    def fetch(self, id: str) -> Optional[tuple[np.ndarray, dict]]:
         """
         Fetch a vector by ID.
         
         Returns:
-            Tuple of (vector, metadata) if found, None if not found
+            Tuple of (vector, metadata_dict) if found, None if not found.
+            metadata_dict is empty {} if no metadata was stored.
         """
         if id not in self._vectors:
             return None
-        return self._vectors[id], self._metadata.get(id)
+        return self._vectors[id], self._metadata.get(id, {})
     
     def __len__(self) -> int:
-        """Number of vectors in the database."""
+        """Number of vectors in the collection."""
         return self.index.size()
     
     def __repr__(self) -> str:
         return (
-            f"VectorDatabase(dimension={self.dimension}, "
+            f"Collection(dimension={self.dimension}, "
             f"metric={self.metric}, "
             f"index_type={self.index_type}, "
             f"size={len(self)})"
@@ -183,17 +279,28 @@ class VectorDatabase:
         Returns:
             True if index should be rebuilt, False for incremental add
         """
-        # Always build if index is empty
+        # Always build if index is empty (first vector)
         if not self.index.is_built:
             return True
         
+        # For PQ: check if we have enough samples for initial training
+        # Once trained, use incremental add
+        if self.index_type == 'pq':
+            n_clusters = self.index_params.get('n_clusters', 256)
+            # If index not built yet and we now have enough samples, rebuild
+            if len(self._vectors) >= n_clusters and not self.index.is_built:
+                return True
+            # Otherwise use incremental add (or skip if not enough samples yet)
+            return False
+        
+        # For other index types (BruteForce, IVF):
+        # Rebuild on every upsert for now (eager strategy)
         # TODO: Implement threshold-based rebuilding
-        # For now, always rebuild (eager strategy)
-        return True
+        return False  # Use incremental add for better performance
     
     def get_stats(self) -> Dict[str, Any]:
         """
-        Get comprehensive statistics about this database instance.
+        Get comprehensive statistics about this collection instance.
         
         Returns a dictionary with:
         - num_vectors: total number of vectors
@@ -255,3 +362,5 @@ class VectorDatabase:
                 "total_mb": round(total_bytes / 1024 / 1024, 2),
             }
         }
+
+
