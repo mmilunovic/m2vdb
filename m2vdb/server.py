@@ -187,7 +187,7 @@ async def upsert_vectors(
     - Index is rebuilt/trained once at the end
     - Much faster for PQ indexes (1 rebuild instead of N rebuilds)
     """
-    db = _get_index(name, user_id)
+    _get_index(name, user_id)  # Verify index exists
     
     try:
         # Extract all vectors from request
