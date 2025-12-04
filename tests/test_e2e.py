@@ -19,7 +19,6 @@ Usage:
 
 import sys
 import time
-import numpy as np
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
@@ -96,7 +95,7 @@ def test_index_lifecycle():
     client = M2VDBClient(api_key="sk-test-user1", host="http://localhost:8000")
     
     # Create index
-    index = client.create_index("test-lifecycle", dimension=3, metric="cosine")
+    client.create_index("test-lifecycle", dimension=3, metric="cosine")
     console.print("  ✓ Created index")
     
     # List indexes
@@ -180,14 +179,14 @@ def test_vector_operations():
     
     # Delete vector
     deleted = index.delete("v3")
-    assert deleted == True, "Expected deletion to succeed"
+    assert deleted, "Expected deletion to succeed"
     stats = index.describe()
     assert stats["size"] == 2, f"Expected 2 vectors, got {stats['size']}"
     console.print("  ✓ Deleted vector")
     
     # Delete non-existent
     deleted = index.delete("v999")
-    assert deleted == False, "Expected deletion of non-existent to return False"
+    assert not deleted, "Expected deletion of non-existent to return False"
     console.print("  ✓ Non-existent vector deletion handled")
     
     client.delete_index("test-vectors")
@@ -262,7 +261,7 @@ def test_all_index_types():
         finally:
             try:
                 client.delete_index(name)
-            except:
+            except Exception:
                 pass
     
     console.print(results_table)

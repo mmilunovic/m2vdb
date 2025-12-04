@@ -90,7 +90,7 @@ def create_persistent_data():
             try:
                 client.delete_index(name)
                 console.print(f"  [dim]Cleaned up existing {name}[/dim]")
-            except:
+            except Exception:
                 pass
             
             # Create index
@@ -109,8 +109,8 @@ def create_persistent_data():
             ]
             count = index.upsert(vectors)
             
-            # Verify
-            stats = index.describe()
+            # Verify data was added
+            index.describe()
             
             created_table.add_row(
                 name,
