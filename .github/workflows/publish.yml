@@ -30,13 +30,10 @@ jobs:
       - name: Create virtual environment
         run: uv venv
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Build wheels
         run: |
-          uv pip install maturin
-          uv run maturin build --release --manifest-path rust/Cargo.toml --out dist
+          uv pip install build
+          uv run python -m build --wheel
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -60,15 +57,10 @@ jobs:
       - name: Create virtual environment
         run: uv venv
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Build sdist
         run: |
-          uv pip install maturin build
-          # Build the Rust extension sdist
-          uv run maturin sdist --manifest-path rust/Cargo.toml --out dist
-          # Build the main package
+          uv pip install build
+          # Build the main package only
           uv run python -m build --sdist
 
       - name: Upload sdist
