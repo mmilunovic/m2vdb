@@ -32,6 +32,7 @@ jobs:
 
       - name: Build wheels
         run: |
+          uv venv
           uv pip install maturin
           uv run maturin build --release --manifest-path rust/Cargo.toml --out dist
 
@@ -59,6 +60,7 @@ jobs:
 
       - name: Build sdist
         run: |
+          uv venv
           uv pip install maturin build
           # Build the Rust extension sdist
           uv run maturin sdist --manifest-path rust/Cargo.toml --out dist
