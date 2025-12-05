@@ -190,6 +190,13 @@ class BruteForceIndex(Index):
         """Return the number of vectors in the index."""
         return len(self.ids)
     
+    def memory_usage(self) -> int:
+        """Calculate memory usage of the index structures in bytes."""
+        if self.vectors is None:
+            return 0
+        # BruteForce stores the full vectors array as its index
+        return self.vectors.nbytes
+    
     def save_artifacts(self, artifacts_dir: str) -> None:
         """
         Save trained artifacts to disk.

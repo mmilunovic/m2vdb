@@ -98,6 +98,21 @@ class Index(ABC):
         """Return the number of vectors currently in the index."""
         pass
     
+    def memory_usage(self) -> int:
+        """
+        Calculate approximate memory usage of index structures in bytes.
+        
+        This should NOT include the raw vectors themselves (those are tracked
+        separately in Collection). Only count index-specific structures like:
+        - PQ: codebooks, quantized codes
+        - IVF: centroids, inverted lists
+        - BruteForce: the vectors array (since it IS the index)
+        
+        Returns:
+            Approximate memory usage in bytes
+        """
+        return 0  # Default implementation for indexes with no overhead
+    
     def save_artifacts(self, artifacts_dir: str) -> None:
         """
         Save trained index artifacts (codebooks, centroids, etc.) to disk.

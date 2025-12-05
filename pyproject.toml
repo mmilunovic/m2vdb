@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "m2vdb"
-version = "0.1.0"
+version = "1.0.0"
 description = "Educational vector database built from first principles to understand how vector search really works."
 readme = "README.md"
 requires-python = ">=3.12"

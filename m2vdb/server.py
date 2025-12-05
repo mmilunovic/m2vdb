@@ -36,7 +36,6 @@ API_KEYS = {
     "sk-test-user2": "user2"
 }
 
-# DATA_ROOT = Path(__file__).parent.parent / "data" / "collections"
 DATA_ROOT = Path(os.getenv("M2VDB_DATA_DIR", Path(__file__).parent.parent / "data")) / "collections"
 collection_manager = CollectionManager(DATA_ROOT)
 
@@ -290,9 +289,8 @@ async def health():
 async def stats(user_id: str = Depends(get_current_user)):
     """Resource usage for the authenticated user."""
     total_vectors = 0
-    total_vectors_bytes = 0
-    total_index_bytes = 0
-    total_metadata_bytes = 0
+    total_memory_mib = 0.0
+    total_disk_mib = 0.0
     index_details = []
     
     index_names = collection_manager.list_collections(user_id)
@@ -302,9 +300,10 @@ async def stats(user_id: str = Depends(get_current_user)):
         db_stats = db.get_stats()
         
         total_vectors += db_stats["num_vectors"]
-        total_vectors_bytes += db_stats["memory"]["vectors_bytes"]
-        total_index_bytes += db_stats["memory"]["index_bytes"]
-        total_metadata_bytes += db_stats["memory"]["metadata_bytes"]
+        total_memory_mib += db_stats["memory_mib"]["total"]
+        
+        if "disk_mib" in db_stats:
+            total_disk_mib += db_stats["disk_mib"]["total"]
         
         index_details.append({
             "name": name,
@@ -312,12 +311,8 @@ async def stats(user_id: str = Depends(get_current_user)):
             "dimension": db_stats["dimension"],
             "metric": db_stats["metric"],
             "num_vectors": db_stats["num_vectors"],
-            "memory": {
-                "vectors_mb": db_stats["memory"]["vectors_mb"],
-                "index_mb": db_stats["memory"]["index_mb"],
-                "metadata_mb": db_stats["memory"]["metadata_mb"],
-                "total_mb": db_stats["memory"]["total_mb"]
-            }
+            "memory_mib": db_stats["memory_mib"],
+            "disk_mib": db_stats.get("disk_mib")
         })
     
     return {
@@ -329,12 +324,8 @@ async def stats(user_id: str = Depends(get_current_user)):
         "vectors": {
             "total": total_vectors
         },
-        "memory": {
-            "vectors_mb": round(total_vectors_bytes / 1024 / 1024, 2),
-            "indexes_mb": round(total_index_bytes / 1024 / 1024, 2),
-            "metadata_mb": round(total_metadata_bytes / 1024 / 1024, 2),
-            "total_mb": round((total_vectors_bytes + total_index_bytes + total_metadata_bytes) / 1024 / 1024, 2)
-        }
+        "memory_mib": round(total_memory_mib, 2),
+        "disk_mib": round(total_disk_mib, 2)
     }
 
 

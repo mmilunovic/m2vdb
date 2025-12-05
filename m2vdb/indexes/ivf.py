@@ -455,6 +455,27 @@ class IVFIndex(Index):
         """Return the total number of vectors in the index."""
         return len(self._id_to_cluster)
     
+    def memory_usage(self) -> int:
+        """Calculate memory usage of IVF index structures in bytes."""
+        total = 0
+        
+        # Centroids: (n_clusters, dimension) float32
+        if self.centroids is not None:
+            total += self.centroids.nbytes
+        
+        # Cached centroid norms (if euclidean)
+        if self.centroid_norms_sq is not None:
+            total += self.centroid_norms_sq.nbytes
+        
+        # Inverted lists: all vectors stored across all clusters
+        for inv_list in self.inverted_lists.values():
+            if 'vectors' in inv_list:
+                total += inv_list['vectors'].nbytes
+            if 'norms_sq' in inv_list:
+                total += inv_list['norms_sq'].nbytes
+        
+        return total
+    
     def save_artifacts(self, artifacts_dir: str) -> None:
         """
         Save trained IVF artifacts to disk.

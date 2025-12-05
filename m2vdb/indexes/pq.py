@@ -53,28 +53,50 @@ class PQIndex(Index):
         
         # Dimensionality of each subvector (computed during build)
         self.subvector_dim: Optional[int] = None
+        
+        # Set up metric-specific functions (strategy pattern)
+        if metric == 'cosine':
+            self._normalize = self._normalize_cosine
+            self._compute_lookup_table = self._compute_lookup_table_cosine
+        else:
+            self._normalize = self._normalize_noop
+            self._compute_lookup_table = self._compute_lookup_table_euclidean
     
     @property
     def is_built(self) -> bool:
         """Check if index has been built (codebooks trained)."""
         return self.codebooks is not None
+    
+    def _normalize_noop(self, vectors: np.ndarray) -> np.ndarray:
+        """No-op normalization for euclidean metric."""
+        return vectors
+    
+    def _normalize_cosine(self, vectors: np.ndarray) -> np.ndarray:
+        """Normalize vectors for cosine metric."""
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1e-10, norms)
+        return vectors / norms
+    
+    def _compute_lookup_table_euclidean(self, codebooks: np.ndarray, query_subvecs: np.ndarray) -> np.ndarray:
+        """Compute lookup table for euclidean distance."""
+        # codebooks: (m, k, d), query_subvecs: (m, 1, d) -> (m, k, d)
+        diff = codebooks - query_subvecs[:, np.newaxis, :]
+        return np.sum(diff * diff, axis=2)  # (m, k)
+    
+    def _compute_lookup_table_cosine(self, codebooks: np.ndarray, query_subvecs: np.ndarray) -> np.ndarray:
+        """Compute lookup table for cosine distance."""
+        # codebooks: (m, k, d), query_subvecs: (m, d) -> (m, k)
+        similarities = np.einsum('mki,mi->mk', codebooks, query_subvecs)
+        return 1 - similarities
 
     def _compute_distances(self, centroids: np.ndarray, query: np.ndarray) -> np.ndarray:
         """
         Compute distances between centroids and query based on metric.
-        
-        IMPORTANT: For cosine metric, assumes both centroids and query are already normalized.
-        This function is called during search after query normalization.
         """
         if self.metric == 'cosine':
-            # Cosine distance: 1 - cosine_similarity
-            # Since both are normalized (unit vectors), cosine_similarity = dot product
-            # No need to divide by norms (they're both 1.0)
             similarities = np.dot(centroids, query)
             return 1 - similarities
         else:
-            # Return squared Euclidean distances; summing squared errors per subvector
-            # yields the standard PQ asymmetric distance for Euclidean metric.
             diff = centroids - query
             return np.sum(diff * diff, axis=1)
 
@@ -138,11 +160,8 @@ class PQIndex(Index):
         
         self.subvector_dim = d // self.n_subvectors
 
-        # Normalize vectors if using cosine metric
-        if self.metric == 'cosine':
-            norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-            norms = np.where(norms == 0, 1e-10, norms)
-            vectors = vectors / norms
+        # Normalize vectors using the metric-specific strategy
+        vectors = self._normalize(vectors)
 
         # Learn codebooks: train k-means for each subvector in parallel
         self.codebooks = np.empty((self.n_subvectors, self.n_clusters, self.subvector_dim))
@@ -159,7 +178,6 @@ class PQIndex(Index):
             else:
                 sub_vectors_sample = sub_vectors
             
-            # Use regular KMeans for better clustering quality
             kmeans = KMeans(
                 n_clusters=self.n_clusters,
                 n_init=10,
@@ -168,17 +186,9 @@ class PQIndex(Index):
             )
             kmeans.fit(sub_vectors_sample)
             
-            # CRITICAL FIX: Update model's centroids after normalization for cosine metric
-            if self.metric == 'cosine':
-                centers = kmeans.cluster_centers_.copy()
-                norms = np.linalg.norm(centers, axis=1, keepdims=True)
-                norms = np.where(norms == 0, 1e-10, norms)
-                centers = centers / norms
-                # Update the model's centroids so predict() uses normalized centroids
-                kmeans.cluster_centers_ = centers
-            else:
-                # No copy needed for euclidean
-                centers = kmeans.cluster_centers_
+            # Normalize centroids using the metric-specific strategy
+            centers = self._normalize(kmeans.cluster_centers_.copy())
+            kmeans.cluster_centers_ = centers
             
             return m, centers, kmeans
         
@@ -215,50 +225,30 @@ class PQIndex(Index):
         if self.codebooks is None or len(self.ids) == 0 or k == 0:
             return []
         
-        # Normalize query if using cosine metric (must match build behavior)
-        if self.metric == 'cosine':
-            query_norm = np.linalg.norm(query)
-            if query_norm > 1e-10:
-                query = query / query_norm
+        # Normalize query using the metric-specific strategy
+        query = self._normalize(query.reshape(1, -1))[0]
         
-        # OPTIMIZED: Vectorized lookup table construction
-        # Reshape query into subvectors: (n_subvectors, subvector_dim)
         query_subvecs = query.reshape(self.n_subvectors, self.subvector_dim)
         
-        if self.metric == 'cosine':
-            # Vectorized cosine distance computation
-            # codebooks: (m, k, d), query_subvecs: (m, d) -> (m, k)
-            similarities = np.einsum('mki,mi->mk', self.codebooks, query_subvecs)
-            lookup_table = 1 - similarities
-        else:
-            # Vectorized squared Euclidean distance computation
-            # codebooks: (m, k, d), query_subvecs: (m, 1, d) -> (m, k, d)
-            diff = self.codebooks - query_subvecs[:, np.newaxis, :]
-            lookup_table = np.sum(diff * diff, axis=2)  # (m, k)
+        # Compute lookup table using the metric-specific strategy
+        lookup_table = self._compute_lookup_table(self.codebooks, query_subvecs)
 
-        # OPTIMIZED: Direct vectorized distance aggregation (no list comprehension)
-        # Create index arrays for advanced indexing
         m_indices = np.arange(self.n_subvectors)[:, np.newaxis]  # (m, 1)
         code_indices = self.quantized_codes.T  # (m, n_vectors)
         
-        # Single vectorized lookup: (m, n_vectors)
         distances_per_subvec = lookup_table[m_indices, code_indices]
         
         if self.metric == 'euclidean':
-            # Sum squared distances across subvectors, then convert back to Euclidean distance
             distances = np.sqrt(np.sum(distances_per_subvec, axis=0))
         else:
-            # Cosine distances (1 - cosine similarity) aggregate additively
             distances = np.sum(distances_per_subvec, axis=0)
         
-        # OPTIMIZED: Use argpartition for efficient top-k selection
         # argpartition is O(n) vs argsort's O(n log n)
         n = len(distances)
         k = min(k, n)  # Ensure k doesn't exceed array size
         
         # Get k smallest distances (unsorted)
         partition_indices = np.argpartition(distances, k-1)[:k]
-        # Sort just those k indices by their distances
         top_k_indices = partition_indices[np.argsort(distances[partition_indices])]
         
         return [(self.ids[idx], float(distances[idx])) for idx in top_k_indices]
@@ -280,12 +270,8 @@ class PQIndex(Index):
         if self.codebooks is None:
             raise RuntimeError("Index must be built before adding vectors. Call build() first.")
         
-        # Normalize if using cosine metric (must match build behavior)
-        if self.metric == 'cosine':
-            norm = np.linalg.norm(vector)
-            if norm == 0:
-                norm = 1e-10
-            vector = vector / norm
+        # Normalize using the metric-specific strategy
+        vector = self._normalize(vector.reshape(1, -1))[0]
         
         # Encode the vector
         codes = self._encode_vector(vector)
@@ -349,6 +335,21 @@ class PQIndex(Index):
     def size(self) -> int:
         """Return the number of vectors currently in the index."""
         return len(self.ids)
+    
+    def memory_usage(self) -> int:
+        """Calculate memory usage of PQ index structures in bytes."""
+        total = 0
+        
+        # Codebooks: (n_subvectors, n_clusters, subvector_dim) float32
+        if self.codebooks is not None:
+            total += self.codebooks.nbytes
+        
+        # Quantized codes: (n_vectors, n_subvectors) int32
+        # This is the BIG memory saving of PQ!
+        if self.quantized_codes is not None:
+            total += self.quantized_codes.nbytes
+        
+        return total
     
     def save_artifacts(self, artifacts_dir: str) -> None:
         """

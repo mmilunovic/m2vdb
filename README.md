@@ -35,9 +35,10 @@
     <td width="33%" valign="top">
       <h4>🌐 API</h4>
       <ul>
-        <li>Minimal FastAPI server</li>
-        <li>Resource stats</li>
-        <li><i>MCP server planned (for the memes)</i></li>
+        <li>REST API with FastAPI</li>
+        <li>Python SDK client & CLI</li>
+        <li>Docker & persistence support</li>
+        <li>MCP Server (planned) for the memes</li>
       </ul>
     </td>
     <td width="33%" valign="top">
@@ -58,9 +59,8 @@
 - [x] **Comparative Benchmarks**: Add FAISS baselines to compare my implementations.
 - [ ] **Experiments**: Hyperparameter sweeps for PQ (and others) with visualization/graphs.
 - [ ] **Configuration**: Better config management for running benchmark sweeps.
-- [ ] **Memory Benchmarking**: Improve memory measurement to track non-Python indexes.
+- [x] **Memory Benchmarking**: Improve memory measurement to track non-Python indexes.
 - [ ] **MCP Server**: Model Context Protocol integration (because why not?).
-- [ ] **Rust Ports**: Porting more index types to Rust for speed.
 
 
 ## ⚡️ Quick Start
