@@ -157,6 +157,7 @@ class CollectionManager:
             metric=metric,
             index_type=index_type,
             index_params=index_params or {},
+            storage_path=str(self.data_root / user_id / name),
         )
         
         manifest = {
@@ -185,6 +186,7 @@ class CollectionManager:
             metric=manifest['metric'],
             index_type=manifest['index_type'],
             index_params=manifest.get('index_params'),
+            storage_path=str(self.data_root / user_id / name),
         )
         
         vectors_dict, metadata_dict = self._load_vectors_and_metadata(user_id, name)

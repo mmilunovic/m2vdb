@@ -2,15 +2,9 @@
 High-level vector collection API.
 """
 
-# TODO: Index build/rebuild strategy improvements
-# - Decide if we should expose /train endpoint to users for manual control
-# - Implement 'threshold' rebuild strategy (rebuild every N vectors)
-# - Implement 'manual' rebuild strategy (only rebuild on explicit .build() call)
-# - Consider batch upsert optimization (add N vectors, rebuild once)
-# - Consider async/background rebuild for large indexes
-# Related: Currently only 'eager' (rebuild on every upsert) is implemented
-
 from typing import List, Optional, Dict, Any
+from pathlib import Path
+import sys
 import numpy as np
 
 from .indexes import Index, BruteForceIndex, PQIndex, IVFIndex, HAS_RUST
@@ -35,6 +29,7 @@ class Collection:
         index_type: str = 'brute_force',
         rebuild_strategy: str = 'eager',
         index_params: Optional[Dict[str, Any]] = None,
+        storage_path: Optional[str] = None,
     ):
         """
         Args:
@@ -45,12 +40,14 @@ class Collection:
                 - 'eager': Rebuild on every upsert (default)
                 - 'threshold': Rebuild every N vectors (TODO: not yet implemented)
             index_params: Optional parameters for the index (e.g., {'n_subvectors': 8, 'n_clusters': 256})
+            storage_path: Optional path where collection is persisted on disk (for stats calculation)
         """
         self.dimension = dimension
         self.metric = metric
         self.index_type = index_type
         self.rebuild_strategy = rebuild_strategy
         self.index_params = index_params or {}
+        self.storage_path = storage_path
         self.index = self._create_index(index_type, metric, self.index_params)
         
         # Storage for vectors and metadata (always in memory for 1M vectors)
@@ -88,11 +85,7 @@ class Collection:
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
         """
-        Insert or update a vector in the collection.
-        
-        WARNING: For PQ indexes with many vectors, this is inefficient because it rebuilds
-        the index on every insert. For bulk loading, collect your vectors and call
-        batch_upsert() instead, or wait until you have >= n_clusters vectors before upserting.
+        Insert or update a vector in the collection.        
         """
         assert vector.shape == (self.dimension,), \
             f"Vector dimension {vector.shape} doesn't match {self.dimension}"
@@ -123,10 +116,6 @@ class Collection:
         """
         Batch insert/update multiple vectors efficiently.
         
-        This is the PROPER way to load many vectors at once, especially for
-        indexes like PQ that need training data. Stores all vectors first,
-        then rebuilds index once at the end.
-        
         Args:
             ids: List of unique string IDs
             vectors: List of numpy arrays with shape (dimension,)
@@ -134,13 +123,6 @@ class Collection:
         
         Returns:
             Number of vectors upserted
-        
-        Example:
-            >>> db.batch_upsert(
-            ...     ids=["id1", "id2"],
-            ...     vectors=[np.array([...]), np.array([...])],
-            ...     metadata=[{"category": "image"}, {"category": "text"}]
-            ... )
         """
         if len(ids) != len(vectors):
             raise ValueError(f"ids and vectors must have same length ({len(ids)} vs {len(vectors)})")
@@ -170,34 +152,11 @@ class Collection:
     def _rebuild_index(self) -> None:
         """
         Rebuild the entire index from stored vectors.
-        
-        Called based on rebuild strategy. For PQ, this retrains k-means.
-        For BruteForce, this just reorganizes the array.
-        
-        TODO: HACK ALERT - PQ training minimum samples check
-        PQ index requires n_samples >= n_clusters for k-means training.
-        Currently we skip rebuild if not enough samples, which means:
-        - Search will fail or return empty results until we have enough vectors
-        - Vectors are still stored in _vectors, just not indexed yet
-        - Not ideal for production use
-        
-        Proper solutions to implement:
-        1. ✅ Batch API: batch_upsert() method implemented above.
-           This is the RIGHT way - store all vectors, rebuild once.
-        2. Manual build: Add rebuild_strategy='manual' + explicit build() method
-           so users control when to train. Good for bulk loading workflows.
-        3. Lazy training: Store vectors without index, train on first search.
-           Risky - search could be very slow unexpectedly.
-        4. Fallback index: Use BruteForce until enough samples for PQ.
-           Complex but provides smooth UX.
-        
-        For now: Skip rebuild if not enough samples (testing hack).
-        Vectors are stored and will be indexed once we hit the threshold.
         """
         if len(self._vectors) == 0:
             return
         
-        # HACK: Check if we have enough samples for PQ training
+        # TODO temporary: Check if we have enough samples for PQ training
         if self.index_type == 'pq':
             n_clusters = self.index_params.get('n_clusters', 256)
             if len(self._vectors) < n_clusters:
@@ -300,67 +259,56 @@ class Collection:
     
     def get_stats(self) -> Dict[str, Any]:
         """
-        Get comprehensive statistics about this collection instance.
+        Get comprehensive statistics about this collection.
         
-        Returns a dictionary with:
-        - num_vectors: total number of vectors
-        - dimension: vector dimensionality
-        - metric: distance metric used
-        - index_type: type of search index
-        - memory: breakdown of memory usage in bytes
-            - vectors_bytes: raw vector storage
-            - index_bytes: index data structures (PQ codebooks, IVF clusters, etc.)
-            - metadata_bytes: stored metadata
-            - total_bytes: sum of all above
+        Returns sizes in MiB (binary, 1024-based) which matches what OS shows.
         """
-        import sys
-        
-        # TODO: This implementation only works when everything is in-memory!
-        # When we implement persistence (disk-backed storage), we need to rewrite this.
-        # We CANNOT load all vectors into RAM just to calculate stats - that defeats the purpose.
-        # 
-        # Future implementation should:
-        # 1. Track memory usage incrementally as vectors are added/removed
-        # 2. Store metadata sizes separately (or use os.path.getsize() on disk files)
-        # 3. Use psutil or similar to get actual process memory usage
-        # 4. For disk-backed vectors: track file sizes, not in-memory numpy array sizes
-        # 5. Consider maintaining a running stats dict that updates on upsert/delete
-        #    instead of recalculating from scratch every time
-        
-        # Calculate vectors memory (raw numpy arrays)
+        # Memory usage
         vectors_bytes = sum(v.nbytes for v in self._vectors.values())
+        index_bytes = self.index.memory_usage() if hasattr(self.index, 'memory_usage') else 0
+        metadata_bytes = sum(sys.getsizeof(m) for m in self._metadata.values() if m)
+        memory_total = vectors_bytes + index_bytes + metadata_bytes
         
-        # Calculate index memory (index-specific data structures)
-        # For brute force: stores vectors internally
-        # For PQ: codebooks + quantized codes
-        # For IVF: cluster centroids + inverted lists
-        index_bytes = 0
-        if hasattr(self.index, 'memory_usage'):
-            index_bytes = self.index.memory_usage()
-        
-        # Calculate metadata memory (Python dicts/objects)
-        metadata_bytes = sum(
-            sys.getsizeof(m) for m in self._metadata.values() if m
-        )
-        
-        total_bytes = vectors_bytes + index_bytes + metadata_bytes
-        
-        return {
+        stats = {
             "num_vectors": len(self),
             "dimension": self.dimension,
             "metric": self.metric,
             "index_type": self.index_type,
-            "memory": {
-                "vectors_bytes": vectors_bytes,
-                "index_bytes": index_bytes,
-                "metadata_bytes": metadata_bytes,
-                "total_bytes": total_bytes,
-                # Convenience MB conversions
-                "vectors_mb": round(vectors_bytes / 1024 / 1024, 2),
-                "index_mb": round(index_bytes / 1024 / 1024, 2),
-                "metadata_mb": round(metadata_bytes / 1024 / 1024, 2),
-                "total_mb": round(total_bytes / 1024 / 1024, 2),
+            "memory_mib": {
+                "vectors": round(vectors_bytes / (1024 ** 2), 2),
+                "index": round(index_bytes / (1024 ** 2), 2),
+                "metadata": round(metadata_bytes / (1024 ** 2), 2),
+                "total": round(memory_total / (1024 ** 2), 2),
             }
         }
+        
+        # Disk usage (if persisted)
+        if self.storage_path:
+            storage_path = Path(self.storage_path)
+            if storage_path.exists():
+                vectors_file = storage_path / "vectors.npz"
+                metadata_file = storage_path / "metadata.json"
+                manifest_file = storage_path / "manifest.json"
+                artifacts_dir = storage_path / "artifacts"
+                
+                vectors_disk = vectors_file.stat().st_size if vectors_file.exists() else 0
+                metadata_disk = metadata_file.stat().st_size if metadata_file.exists() else 0
+                manifest_disk = manifest_file.stat().st_size if manifest_file.exists() else 0
+                
+                artifacts_disk = 0
+                if artifacts_dir.exists() and artifacts_dir.is_dir():
+                    artifacts_disk = sum(f.stat().st_size for f in artifacts_dir.rglob('*') if f.is_file())
+                
+                disk_total = vectors_disk + metadata_disk + manifest_disk + artifacts_disk
+                
+                stats["disk_mib"] = {
+                    "vectors": round(vectors_disk / (1024 ** 2), 2),
+                    "metadata": round(metadata_disk / (1024 ** 2), 2),
+                    "manifest": round(manifest_disk / (1024 ** 2), 2),
+                    "index_artifacts": round(artifacts_disk / (1024 ** 2), 2),
+                    "total": round(disk_total / (1024 ** 2), 2),
+                }
+        
+        return stats
 
 
