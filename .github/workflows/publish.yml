@@ -27,12 +27,14 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Create virtual environment
+        run: uv venv
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build wheels
         run: |
-          uv venv
           uv pip install maturin
           uv run maturin build --release --manifest-path rust/Cargo.toml --out dist
 
@@ -55,12 +57,14 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Create virtual environment
+        run: uv venv
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build sdist
         run: |
-          uv venv
           uv pip install maturin build
           # Build the Rust extension sdist
           uv run maturin sdist --manifest-path rust/Cargo.toml --out dist
