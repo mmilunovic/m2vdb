@@ -9,6 +9,7 @@ import numpy as np
 
 from .indexes import Index, BruteForceIndex, PQIndex, IVFIndex, HAS_RUST
 from .models import SearchResult
+from .exceptions import DimensionMismatchError
 
 if HAS_RUST:
     from .indexes import RustBruteForceIndex
@@ -79,33 +80,41 @@ class Collection:
             raise ValueError(f"Unknown index type: {index_type}")
     
     def upsert(
-        self, 
-        id: str, 
-        vector: np.ndarray, 
+        self,
+        id: str,
+        vector: np.ndarray,
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
         """
-        Insert or update a vector in the collection.        
+        Insert or update a vector in the collection.
+
+        If the ID already exists, the vector and metadata are replaced.
         """
-        assert vector.shape == (self.dimension,), \
-            f"Vector dimension {vector.shape} doesn't match {self.dimension}"
-        
-        # Check if this is an update
-        if id in self._vectors:
-            raise ValueError(f"ID '{id}' already exists. Delete first to update.")
-        
+        if vector.shape != (self.dimension,):
+            raise DimensionMismatchError(
+                f"Vector dimension {vector.shape} doesn't match collection dimension ({self.dimension},)"
+            )
+
+        is_update = id in self._vectors
+
         # Store vector and metadata
         self._vectors[id] = vector
         if metadata is not None:
             self._metadata[id] = metadata
-        self._upserts_since_rebuild += 1
-        
-        # Decide whether to rebuild or add incrementally
-        if self._should_rebuild():
+        elif is_update and id in self._metadata:
+            # Keep existing metadata if no new metadata provided on update
+            pass
+
+        if is_update:
+            # Update requires rebuild since the vector changed
             self._rebuild_index()
         else:
-            # Incremental add to existing index (only works if index already built)
-            self.index.add(id, vector)
+            self._upserts_since_rebuild += 1
+            # Decide whether to rebuild or add incrementally
+            if self._should_rebuild():
+                self._rebuild_index()
+            elif self.index.is_built:
+                self.index.add(id, vector)
     
     def batch_upsert(
         self,
@@ -132,12 +141,11 @@ class Collection:
         
         count = 0
         for i, (id, vector) in enumerate(zip(ids, vectors)):
-            assert vector.shape == (self.dimension,), \
-                f"Vector {i} dimension {vector.shape} doesn't match {self.dimension}"
-            
-            if id in self._vectors:
-                raise ValueError(f"ID '{id}' already exists. Delete first to update.")
-            
+            if vector.shape != (self.dimension,):
+                raise DimensionMismatchError(
+                    f"Vector {i} dimension {vector.shape} doesn't match collection dimension ({self.dimension},)"
+                )
+
             # Store vector and metadata (no rebuild yet)
             self._vectors[id] = vector
             if metadata is not None and metadata[i] is not None:
@@ -155,19 +163,15 @@ class Collection:
         """
         if len(self._vectors) == 0:
             return
-        
-        # TODO temporary: Check if we have enough samples for PQ training
-        if self.index_type == 'pq':
-            n_clusters = self.index_params.get('n_clusters', 256)
-            if len(self._vectors) < n_clusters:
-                # Not enough samples to train PQ - skip rebuild
-                # Vectors are stored, will be indexed when we have enough
-                return
-        
+
+        if not self.index.can_build(len(self._vectors)):
+            # Not enough vectors to build (e.g., PQ needs >= n_clusters)
+            return
+
         # Extract all vectors and IDs in consistent order
         ids = list(self._vectors.keys())
         vectors = np.array([self._vectors[id] for id in ids])
-        
+
         # Rebuild the index
         self.index.build(vectors, ids)
         self._upserts_since_rebuild = 0
@@ -176,25 +180,28 @@ class Collection:
         """Delete a vector by ID. Returns True if found and deleted."""
         if id not in self._vectors:
             return False
-        
+
         # Remove from storage
         del self._vectors[id]
         self._metadata.pop(id, None)
-        
-        # Rebuild index without this vector
-        self._rebuild_index()
-        
+
+        # Use index-level delete (O(1) swap-and-pop) instead of full rebuild
+        if self.index.is_built:
+            self.index.delete(id)
+
         return True
     
     def search(
-        self, 
-        query: np.ndarray, 
+        self,
+        query: np.ndarray,
         k: int = 10,
         return_metadata: bool = True
     ) -> List[SearchResult]:
         """Find k nearest neighbors."""
-        assert query.shape == (self.dimension,), \
-            f"Query dimension {query.shape} doesn't match {self.dimension}"
+        if query.shape != (self.dimension,):
+            raise DimensionMismatchError(
+                f"Query dimension {query.shape} doesn't match collection dimension ({self.dimension},)"
+            )
         
         raw_results = self.index.search(query, k)
         
@@ -234,28 +241,16 @@ class Collection:
     def _should_rebuild(self) -> bool:
         """
         Determine if index should be rebuilt based on strategy.
-        
+
         Returns:
             True if index should be rebuilt, False for incremental add
         """
-        # Always build if index is empty (first vector)
+        # Build if index is not yet built and we have enough vectors
         if not self.index.is_built:
-            return True
-        
-        # For PQ: check if we have enough samples for initial training
-        # Once trained, use incremental add
-        if self.index_type == 'pq':
-            n_clusters = self.index_params.get('n_clusters', 256)
-            # If index not built yet and we now have enough samples, rebuild
-            if len(self._vectors) >= n_clusters and not self.index.is_built:
-                return True
-            # Otherwise use incremental add (or skip if not enough samples yet)
-            return False
-        
-        # For other index types (BruteForce, IVF):
-        # Rebuild on every upsert for now (eager strategy)
-        # TODO: Implement threshold-based rebuilding
-        return False  # Use incremental add for better performance
+            return self.index.can_build(len(self._vectors))
+
+        # Once built, use incremental add for better performance
+        return False
     
     def get_stats(self) -> Dict[str, Any]:
         """

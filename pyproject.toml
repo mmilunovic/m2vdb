@@ -71,7 +71,12 @@ m2vdb-server = "m2vdb.cli:main"
 dev = [
     "ruff>=0.14.6",
     "maturin>=1.10.1",
+    "pytest>=8.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.setuptools.packages.find]
 include = ["m2vdb*", "benchmarks*"]

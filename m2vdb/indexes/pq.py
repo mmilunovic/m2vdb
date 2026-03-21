@@ -66,6 +66,10 @@ class PQIndex(Index):
     def is_built(self) -> bool:
         """Check if index has been built (codebooks trained)."""
         return self.codebooks is not None
+
+    def can_build(self, n_vectors: int) -> bool:
+        """PQ requires at least n_clusters vectors for k-means training."""
+        return n_vectors >= self.n_clusters
     
     def _normalize_noop(self, vectors: np.ndarray) -> np.ndarray:
         """No-op normalization for euclidean metric."""
@@ -88,17 +92,6 @@ class PQIndex(Index):
         # codebooks: (m, k, d), query_subvecs: (m, d) -> (m, k)
         similarities = np.einsum('mki,mi->mk', codebooks, query_subvecs)
         return 1 - similarities
-
-    def _compute_distances(self, centroids: np.ndarray, query: np.ndarray) -> np.ndarray:
-        """
-        Compute distances between centroids and query based on metric.
-        """
-        if self.metric == 'cosine':
-            similarities = np.dot(centroids, query)
-            return 1 - similarities
-        else:
-            diff = centroids - query
-            return np.sum(diff * diff, axis=1)
 
     def _encode_vector(self, vectors: np.ndarray) -> np.ndarray:
         """
