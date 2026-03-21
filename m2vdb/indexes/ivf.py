@@ -1,4 +1,5 @@
 from typing import List, Optional, Dict, Tuple
+import logging
 import numpy as np
 import os
 from sklearn.cluster import KMeans
@@ -6,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 import warnings
 
 from .base import Index
+
+logger = logging.getLogger(__name__)
 
 
 class IVFIndex(Index):
@@ -206,7 +209,7 @@ class IVFIndex(Index):
         if self.nprobe is None:
             self.nprobe = max(1, int(np.sqrt(self.n_clusters)))
         
-        print(f"  IVF: Building index with {self.n_clusters} clusters, nprobe={self.nprobe}")
+        logger.info(f"IVF: Building index with {self.n_clusters} clusters, nprobe={self.nprobe}")
         
         # Convert to float32 for memory efficiency
         vectors = vectors.astype(np.float32)
@@ -216,7 +219,7 @@ class IVFIndex(Index):
             vectors = self._normalize_vectors(vectors)
         
         # Learn cluster centroids using k-means
-        print("  IVF: Running k-means clustering (this may take a minute)...")
+        logger.info("IVF: Running k-means clustering...")
         kmeans = KMeans(
             n_clusters=self.n_clusters,
             max_iter=self.kmeans_max_iter,

@@ -5,10 +5,8 @@ Pydantic models for the vector database API.
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 
-
-class CollectionNotFound(Exception):
-    """Raised when a collection does not exist."""
-    pass
+# Backwards compatibility: CollectionNotFound used to live here
+from .exceptions import CollectionNotFoundError as CollectionNotFound  # noqa: F401
 
 
 class SearchResult(BaseModel):

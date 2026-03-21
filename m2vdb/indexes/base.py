@@ -98,6 +98,22 @@ class Index(ABC):
         """Return the number of vectors currently in the index."""
         pass
     
+    def can_build(self, n_vectors: int) -> bool:
+        """
+        Whether the index has enough vectors to build/train.
+
+        Some indexes (e.g., PQ) require a minimum number of vectors for
+        training. This method allows Collection to check before triggering
+        a build.
+
+        Args:
+            n_vectors: Number of vectors available for building
+
+        Returns:
+            True if the index can be built with this many vectors
+        """
+        return True
+
     def memory_usage(self) -> int:
         """
         Calculate approximate memory usage of index structures in bytes.
